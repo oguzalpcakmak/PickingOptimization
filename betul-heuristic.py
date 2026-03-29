@@ -534,6 +534,10 @@ class Solution:
     solve_time: float
     phase_times: dict[str, float]
     objective_value: float
+    demands: dict[int, int]
+    floor_assignments: dict[str, dict[int, int]]
+    relevant_locs: list[Loc]
+    loc_lookup: dict[str, Loc]
 
 
 def solve(
@@ -638,6 +642,10 @@ def solve(
         solve_time=total_time,
         phase_times=phase_times,
         objective_value=obj,
+        demands=dict(demands),
+        floor_assignments={fl: dict(arts) for fl, arts in floor_assignments.items()},
+        relevant_locs=list(relevant_locs),
+        loc_lookup=dict(loc_lookup),
     )
 
 
@@ -646,17 +654,24 @@ def solve(
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def write_pick_csv(sol: Solution, loc_lookup: dict[str, Loc], path: str | Path) -> Path:
+def _build_node_id_map(locs: Iterable[Loc]) -> dict[tuple[str, int, int], str]:
+    node_keys = sorted(
+        {(loc.floor, loc.aisle, loc.column) for loc in locs},
+        key=lambda key: (_floor_index(key[0]), key[1], key[2]),
+    )
+    return {key: f"n{i:05d}" for i, key in enumerate(node_keys, 1)}
+
+
+def write_pick_csv(sol: Solution, path: str | Path) -> Path:
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict[str, Any]] = []
-    global_order = 0
     for fr in sol.floor_results:
         # Rota sırası: (aisle, column) → sıra numarası
         route_pos = {node: i + 1 for i, node in enumerate(fr.route)}
         for lid, qty in fr.picks.items():
-            loc = loc_lookup[lid]
+            loc = sol.loc_lookup[lid]
             pos = route_pos.get((loc.aisle, loc.column), 999)
             rows.append({
                 "PICKER_ID": f"PICKER_{loc.floor}",
@@ -677,14 +692,98 @@ def write_pick_csv(sol: Solution, loc_lookup: dict[str, Loc], path: str | Path) 
         r["AISLE"], r["COLUMN"], r["SHELF"],
     ))
 
-    # Global sıra numarasını yeniden ata
-    for i, r in enumerate(rows, 1):
-        r["GLOBAL_ORDER"] = i
-
     fields = [
         "PICKER_ID", "THM_ID", "ARTICLE_CODE", "FLOOR", "AISLE",
         "COLUMN", "SHELF", "LEFT_OR_RIGHT", "AMOUNT", "PICKCAR_ID",
-        "PICK_ORDER", "GLOBAL_ORDER",
+        "PICK_ORDER",
+    ]
+    with out.open("w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+    return out
+
+
+def write_alternative_locations_csv(sol: Solution, path: str | Path) -> Path:
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    node_id_map = _build_node_id_map(sol.relevant_locs)
+    picked_qty_by_lid: dict[str, int] = {}
+    active_nodes: set[tuple[str, int, int]] = set()
+    active_thms: set[str] = set()
+    pick_order_by_node: dict[tuple[str, int, int], int] = {}
+
+    for fr in sol.floor_results:
+        active_thms |= fr.opened_thms
+        route_pos = {node: i + 1 for i, node in enumerate(fr.route)}
+        for aisle, column in fr.route:
+            active_nodes.add((fr.floor, aisle, column))
+            pick_order_by_node[(fr.floor, aisle, column)] = route_pos[(aisle, column)]
+        for lid, qty in fr.picks.items():
+            picked_qty_by_lid[lid] = picked_qty_by_lid.get(lid, 0) + qty
+
+    floor_assigned = defaultdict(int)
+    for floor, articles in sol.floor_assignments.items():
+        for article, qty in articles.items():
+            floor_assigned[(floor, article)] += qty
+
+    rows: list[dict[str, Any]] = []
+    for loc in sol.relevant_locs:
+        node_key = (loc.floor, loc.aisle, loc.column)
+        picked_qty = picked_qty_by_lid.get(loc.lid, 0)
+        row = {
+            "ARTICLE_CODE": loc.article,
+            "ARTICLE_DEMAND": sol.demands[loc.article],
+            "FLOOR_ASSIGNED_DEMAND": floor_assigned[(loc.floor, loc.article)],
+            "LOCATION_ID": loc.lid,
+            "THM_ID": loc.thm_id,
+            "FLOOR": loc.floor,
+            "AISLE": loc.aisle,
+            "COLUMN": loc.column,
+            "SHELF": loc.shelf,
+            "LEFT_OR_RIGHT": loc.side,
+            "AVAILABLE_STOCK": loc.stock,
+            "NODE_ID": node_id_map[node_key],
+            "NODE_VISITED": 1 if node_key in active_nodes else 0,
+            "THM_OPENED": 1 if loc.thm_id in active_thms else 0,
+            "IS_SELECTED": 1 if picked_qty > 0 else 0,
+            "PICKED_AMOUNT": picked_qty,
+            "PICK_ORDER": pick_order_by_node.get(node_key, ""),
+        }
+        rows.append(row)
+
+    rows.sort(key=lambda r: (
+        int(r["ARTICLE_CODE"]),
+        -int(r["IS_SELECTED"]),
+        int(r["PICK_ORDER"]) if str(r["PICK_ORDER"]).strip() else 10**9,
+        _floor_index(str(r["FLOOR"])),
+        int(r["AISLE"]),
+        int(r["COLUMN"]),
+        int(r["SHELF"]),
+        str(r["LEFT_OR_RIGHT"]),
+        str(r["THM_ID"]),
+        str(r["LOCATION_ID"]),
+    ))
+
+    fields = [
+        "ARTICLE_CODE",
+        "ARTICLE_DEMAND",
+        "FLOOR_ASSIGNED_DEMAND",
+        "LOCATION_ID",
+        "THM_ID",
+        "FLOOR",
+        "AISLE",
+        "COLUMN",
+        "SHELF",
+        "LEFT_OR_RIGHT",
+        "AVAILABLE_STOCK",
+        "NODE_ID",
+        "NODE_VISITED",
+        "THM_OPENED",
+        "IS_SELECTED",
+        "PICKED_AMOUNT",
+        "PICK_ORDER",
     ]
     with out.open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fields)
@@ -741,7 +840,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--distance-weight", type=float, default=1.0)
     parser.add_argument("--thm-weight", type=float, default=15.0)
     parser.add_argument("--floor-weight", type=float, default=30.0)
-    parser.add_argument("--output", default="PickDataOutput_Heuristic.csv")
+    parser.add_argument(
+        "--output", "--pick-data-output",
+        dest="pick_data_output",
+        default="PickDataOutput_Heuristic.csv",
+        help="Pick CSV çıktısı. Exact modelle aynı kolon yapısını kullanır.",
+    )
+    parser.add_argument(
+        "--alternative-locations-output",
+        default="AlternativeLocationsOutput_Heuristic.csv",
+        help="Alternatif lokasyon CSV çıktısı. Boş string verilirse kapatılır.",
+    )
     args = parser.parse_args(argv)
 
     print("╔══════════════════════════════════════════════════════════╗")
@@ -760,17 +869,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print_report(sol)
 
-    if args.output:
-        # loc_lookup'ı yeniden oluştur
-        all_locs = load_stock(args.stock)
-        loc_lookup = {l.lid: l for l in all_locs}
-        # Çözümde kullanılan lokasyonları ekle
-        for fr in sol.floor_results:
-            for lid in fr.picks:
-                if lid not in loc_lookup:
-                    pass  # zaten var olmalı
-        p = write_pick_csv(sol, loc_lookup, args.output)
+    if args.pick_data_output:
+        p = write_pick_csv(sol, args.pick_data_output)
         print(f"\nÇıktı yazıldı: {p}")
+    if args.alternative_locations_output:
+        p_alt = write_alternative_locations_csv(sol, args.alternative_locations_output)
+        print(f"Alternatif lokasyonlar yazıldı: {p_alt}")
 
     return 0
 

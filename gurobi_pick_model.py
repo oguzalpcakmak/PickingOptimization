@@ -528,7 +528,12 @@ def _build_instance_from_stock_records(
         locations_by_node[node_id].append(record.location_id)
         locations_by_thm[record.thm_id].append(record.location_id)
 
-    # d_{n,m} parametresi bütün fiziksel düğüm çiftleri için önceden hesaplanır.
+    # Option A - kat başına ayrı rota:
+    # d_{n,m} yalnızca modelin gerçekten kullanacağı yaylar için hazırlanır:
+    #   - depot <-> node
+    #   - aynı kattaki node -> node
+    # Farklı katlar arası doğrudan yaylar kaldırıldığı için cross-floor çiftleri
+    # burada tutulmaz; kat değiştirme etkisi amaç fonksiyonundaki kat cezasıyla temsil edilir.
     distances: dict[tuple[str, str], float] = {}
     node_ids = sorted(node_lookup)
     for node_id in node_ids:
@@ -537,13 +542,14 @@ def _build_instance_from_stock_records(
         distances[(DEPOT_ID, node_id)] = entry_distance
         distances[(node_id, DEPOT_ID)] = entry_distance
 
-    for origin_id in node_ids:
-        origin = node_lookup[origin_id]
-        for destination_id in node_ids:
-            if origin_id == destination_id:
-                continue
-            destination = node_lookup[destination_id]
-            distances[(origin_id, destination_id)] = get_distance(origin, destination, config)
+    for floor, floor_node_ids in nodes_by_floor.items():
+        for origin_id in floor_node_ids:
+            origin = node_lookup[origin_id]
+            for destination_id in floor_node_ids:
+                if origin_id == destination_id:
+                    continue
+                destination = node_lookup[destination_id]
+                distances[(origin_id, destination_id)] = same_floor_distance(origin, destination)
 
     return InstanceData(
         demands=demand_map,
@@ -663,7 +669,6 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     node_ids = sorted(instance.physical_nodes)
     floor_ids = sorted(instance.nodes_by_floor, key=_floor_index)
     thm_ids = sorted(instance.locations_by_thm)
-    augmented_nodes = [DEPOT_ID, *node_ids]
     stock_upper_bounds = {record.location_id: record.stock for record in instance.stock_records}
 
     quantity_vtype = GRB.SEMIINT if config.quantity_integral else GRB.SEMICONT
@@ -677,10 +682,34 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     b = model.addVars(thm_ids, vtype=GRB.BINARY, name="b")
     p = model.addVars(node_ids, lb=0.0, ub=len(node_ids), vtype=GRB.CONTINUOUS, name="p")
 
-    # Uygulama detayı:
-    # Model.tex'teki v_{n,m} değişkenleri fiziksel düğümler arasında tanımlı.
-    # Kodda MTZ turunu başlatıp bitirmek için buna ek olarak sanal bir depot kullanılır.
-    arc_index = [(origin, destination) for origin in augmented_nodes for destination in augmented_nodes if origin != destination]
+    # Option A - kat başına ayrı rota:
+    # Tek global tur yerine, her aktif kat için depot'tan başlayıp depot'a dönen
+    # bağımsız bir rota kurulur. Bu nedenle yay kümesi yalnızca:
+    #   - depot <-> o kattaki düğümler
+    #   - aynı kattaki düğüm çiftleri
+    # biçimindedir. Farklı katlar arası node->node yayları tamamen kaldırılır.
+    arc_index: list[tuple[str, str]] = []
+    outgoing_by_node: dict[str, list[str]] = {}
+    incoming_by_node: dict[str, list[str]] = {}
+    depot_outgoing_by_floor: dict[str, list[str]] = {}
+    depot_incoming_by_floor: dict[str, list[str]] = {}
+
+    for floor_id in floor_ids:
+        floor_node_ids = sorted(instance.nodes_by_floor[floor_id])
+        depot_outgoing_by_floor[floor_id] = list(floor_node_ids)
+        depot_incoming_by_floor[floor_id] = list(floor_node_ids)
+
+        for node_id in floor_node_ids:
+            same_floor_other_nodes = [other_id for other_id in floor_node_ids if other_id != node_id]
+            outgoing_by_node[node_id] = [*same_floor_other_nodes, DEPOT_ID]
+            incoming_by_node[node_id] = [DEPOT_ID, *same_floor_other_nodes]
+
+            arc_index.append((DEPOT_ID, node_id))
+            arc_index.append((node_id, DEPOT_ID))
+            for other_id in same_floor_other_nodes:
+                arc_index.append((node_id, other_id))
+
+    arc_index = sorted(set(arc_index))
     if config.max_route_arcs is not None and len(arc_index) > config.max_route_arcs:
         raise DataValidationError(
             "The filtered instance still creates "
@@ -690,17 +719,25 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     v = model.addVars(arc_index, vtype=GRB.BINARY, name="v")
 
     # Model.tex - "Amaç Fonksiyonu"
-    #   min Z = w1 * sum_{n,m} d_{n,m} v_{n,m}
+    #   min Z = w1 * toplam kat-içi rota mesafesi
     #         + w2 * sum_{j6} b_{j6}
     #         + w3 * sum_{j1} z_{j1}
     #
+    # Option A farkı:
+    # Kat değişimi artık cross-floor yaylarla modellenmez. Onun yerine amaç
+    # fonksiyonunda aktif kat sayısına bağlı ek bir ceza tutulur. "İlk kat ücretsiz,
+    # her ek kat bir switch" mantığı lineer modelde sabit terim farkı dışında
+    # sum(z_j1) ile eşdeğerdir; bu yüzden switch cezası doğrudan sum(z_j1) üzerine eklenir.
+    #
     # Terim 1: "Toplam yürünen Manhattan mesafesi."
     # Terim 2: "Toplam kullanılan (açılan) THM kutusu sayısı."
-    # Terim 3: "Toplam girilen (aktifleşen) kat sayısı."
+    # Terim 3: "Toplam girilen (aktifleşen) kat sayısı" + kat geçiş cezası.
+    floor_activation_term = gp.quicksum(z[floor_id] for floor_id in floor_ids)
     model.setObjective(
         config.distance_weight * gp.quicksum(instance.distances[arc] * v[arc] for arc in arc_index)
         + config.thm_weight * gp.quicksum(b[thm_id] for thm_id in thm_ids)
-        + config.floor_weight * gp.quicksum(z[floor_id] for floor_id in floor_ids),
+        + config.floor_weight * floor_activation_term
+        + config.cross_floor_penalty_per_floor * floor_activation_term,
         GRB.MINIMIZE,
     )
 
@@ -767,51 +804,55 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
         )
 
     for node_id in node_ids:
-        outgoing = [destination for destination in augmented_nodes if destination != node_id]
-        incoming = [origin for origin in augmented_nodes if origin != node_id]
-
         # (cons:flow1)
         # "Akış korunumu kısıtları. Bir noktaya girildiyse oradan çıkılmalıdır."
+        # Option A'da bu denge yalnızca aynı kat içindeki yaylar + ilgili katın depot bağı üzerinden kurulur.
         model.addConstr(
-            gp.quicksum(v[node_id, destination] for destination in outgoing) == u[node_id],
+            gp.quicksum(v[node_id, destination] for destination in outgoing_by_node[node_id]) == u[node_id],
             name=f"flow_out_{node_id}",
         )
 
         # (cons:flow2)
         # "Akış korunumu kısıtları. Bir noktaya girildiyse oradan çıkılmalıdır."
         model.addConstr(
-            gp.quicksum(v[origin, node_id] for origin in incoming) == u[node_id],
+            gp.quicksum(v[origin, node_id] for origin in incoming_by_node[node_id]) == u[node_id],
             name=f"flow_in_{node_id}",
         )
 
-    # Uygulama detayı - Model.tex'te yok:
-    # Sanal depot'tan tam bir tur oluşturmak için bir çıkış ve bir dönüş yayı zorunlu kılınır.
-    model.addConstr(
-        gp.quicksum(v[DEPOT_ID, node_id] for node_id in node_ids) == 1,
-        name="depot_out",
-    )
-    model.addConstr(
-        gp.quicksum(v[node_id, DEPOT_ID] for node_id in node_ids) == 1,
-        name="depot_in",
-    )
+    for floor_id in floor_ids:
+        floor_node_ids = sorted(instance.nodes_by_floor[floor_id])
+        if not floor_node_ids:
+            continue
 
-    mtz_big_m = len(node_ids)
-    for node_id in node_ids:
-        # MTZ için p_n ancak düğüm ziyaret edilirse aktifleşsin.
-        model.addConstr(p[node_id] >= u[node_id], name=f"mtz_lb_{node_id}")
-        model.addConstr(p[node_id] <= mtz_big_m * u[node_id], name=f"mtz_ub_{node_id}")
+        # Uygulama detayı - Model.tex'te yok:
+        # Her aktif kat için depot'tan bir çıkış ve depot'a bir dönüş yayı kurulur.
+        model.addConstr(
+            gp.quicksum(v[DEPOT_ID, node_id] for node_id in depot_outgoing_by_floor[floor_id]) == z[floor_id],
+            name=f"depot_out_{floor_id}",
+        )
+        model.addConstr(
+            gp.quicksum(v[node_id, DEPOT_ID] for node_id in depot_incoming_by_floor[floor_id]) == z[floor_id],
+            name=f"depot_in_{floor_id}",
+        )
 
-    for origin in node_ids:
-        for destination in node_ids:
-            if origin == destination:
-                continue
-            # (cons:mtz)
-            # "Miller-Tucker-Zemlin (MTZ) alt tur eleme kısıtı. Rotaların tek bir kapalı
-            # döngü olmasını ve alt turların oluşmamasını sağlar."
-            model.addConstr(
-                p[origin] - p[destination] + (mtz_big_m * v[origin, destination]) <= mtz_big_m - 1,
-                name=f"mtz_{origin}_{destination}",
-            )
+        mtz_big_m = len(floor_node_ids)
+        for node_id in floor_node_ids:
+            # MTZ için p_n ancak düğüm ziyaret edilirse aktifleşsin.
+            model.addConstr(p[node_id] >= u[node_id], name=f"mtz_lb_{node_id}")
+            model.addConstr(p[node_id] <= mtz_big_m * u[node_id], name=f"mtz_ub_{node_id}")
+
+        for origin in floor_node_ids:
+            for destination in floor_node_ids:
+                if origin == destination:
+                    continue
+                # (cons:mtz)
+                # "Miller-Tucker-Zemlin (MTZ) alt tur eleme kısıtı. Rotaların tek bir kapalı
+                # döngü olmasını ve alt turların oluşmamasını sağlar."
+                # Option A'da bu kısıt her kat için bağımsız uygulanır.
+                model.addConstr(
+                    p[origin] - p[destination] + (mtz_big_m * v[origin, destination]) <= mtz_big_m - 1,
+                    name=f"mtz_{floor_id}_{origin}_{destination}",
+                )
 
     model.update()
     return ModelArtifacts(model=model, instance=instance, y=y, u=u, v=v, p=p, z=z, b=b)
@@ -858,7 +899,17 @@ def extract_solution(artifacts: ModelArtifacts, tolerance: float = 1e-6) -> dict
     active_nodes = [node_id for node_id, var in artifacts.u.items() if var.X > 0.5]
     active_floors = [floor_id for floor_id, var in artifacts.z.items() if var.X > 0.5]
     active_thms = [thm_id for thm_id, var in artifacts.b.items() if var.X > 0.5]
-    route_nodes = _ordered_route_nodes(active_arcs, active_nodes)
+    route_nodes_by_floor = _ordered_route_nodes_by_floor(
+        active_arcs,
+        artifacts.instance,
+        active_nodes,
+        active_floors,
+    )
+    route_nodes = [
+        node_id
+        for floor_id in sorted(route_nodes_by_floor, key=_floor_index)
+        for node_id in route_nodes_by_floor[floor_id]
+    ]
 
     return {
         "objective_value": model.ObjVal,
@@ -866,43 +917,47 @@ def extract_solution(artifacts: ModelArtifacts, tolerance: float = 1e-6) -> dict
         "active_nodes": active_nodes,
         "active_arcs": active_arcs,
         "route_nodes": route_nodes,
+        "route_nodes_by_floor": route_nodes_by_floor,
         "active_floors": active_floors,
         "active_thms": active_thms,
     }
 
 
-def _ordered_route_nodes(
+def _ordered_route_nodes_by_floor(
     active_arcs: Sequence[tuple[str, str]],
+    instance: InstanceData,
     active_nodes: Sequence[str],
-) -> list[str]:
-    """Reconstruct the visited-node order from the solved MTZ arc variables.
-
-    The optimization model stores routing decisions as binary arc variables
-    v_(n,m). For the pick CSV we need a human-readable stop order, so this
-    helper follows the unique successor chain starting from the virtual depot
-    and returns the physical nodes in visit order.
-
-    If a partially recovered route ever leaves some active nodes untraversed
-    because of numerical tolerance or an unexpected incumbent shape, those
-    missing nodes are appended deterministically as a safe fallback so export
-    still succeeds.
-    """
+    active_floors: Sequence[str],
+) -> dict[str, list[str]]:
+    """Reconstruct one visit order per active floor from the solved arc variables."""
     successors = {origin: destination for origin, destination in active_arcs}
+    active_node_set = set(active_nodes)
+    route_nodes_by_floor: dict[str, list[str]] = {}
 
-    ordered_nodes: list[str] = []
-    seen_nodes: set[str] = set()
-    current = successors.get(DEPOT_ID)
+    for floor_id in sorted(active_floors, key=_floor_index):
+        floor_node_ids = set(instance.nodes_by_floor.get(floor_id, [])) & active_node_set
+        floor_starts = [
+            destination
+            for origin, destination in active_arcs
+            if origin == DEPOT_ID and destination in floor_node_ids
+        ]
 
-    while current is not None and current != DEPOT_ID and current not in seen_nodes:
-        ordered_nodes.append(current)
-        seen_nodes.add(current)
-        current = successors.get(current)
+        ordered_nodes: list[str] = []
+        seen_nodes: set[str] = set()
+        current = floor_starts[0] if floor_starts else None
 
-    for node_id in sorted(active_nodes):
-        if node_id not in seen_nodes:
-            ordered_nodes.append(node_id)
+        while current is not None and current != DEPOT_ID and current not in seen_nodes:
+            ordered_nodes.append(current)
+            seen_nodes.add(current)
+            current = successors.get(current)
 
-    return ordered_nodes
+        for node_id in sorted(floor_node_ids):
+            if node_id not in seen_nodes:
+                ordered_nodes.append(node_id)
+
+        route_nodes_by_floor[floor_id] = ordered_nodes
+
+    return route_nodes_by_floor
 
 
 def _format_pick_amount(quantity: float, tolerance: float = 1e-6) -> int | str:
@@ -921,7 +976,10 @@ def build_pick_data_rows(artifacts: ModelArtifacts, tolerance: float = 1e-6) -> 
     node once and may collect several items there.
     """
     solution = extract_solution(artifacts, tolerance=tolerance)
-    route_position = {node_id: index + 1 for index, node_id in enumerate(solution["route_nodes"])}
+    route_position: dict[str, int] = {}
+    for floor_id, route_nodes in solution["route_nodes_by_floor"].items():
+        for index, node_id in enumerate(route_nodes, start=1):
+            route_position[node_id] = index
 
     rows: list[dict[str, Any]] = []
     for pick in solution["picked_locations"]:
@@ -945,8 +1003,8 @@ def build_pick_data_rows(artifacts: ModelArtifacts, tolerance: float = 1e-6) -> 
 
     rows.sort(
         key=lambda row: (
-            row["PICK_ORDER"],
             _floor_index(str(row["FLOOR"])),
+            row["PICK_ORDER"],
             int(row["AISLE"]),
             int(row["COLUMN"]),
             int(row["SHELF"]),
@@ -1008,7 +1066,10 @@ def build_alternative_location_rows(
     }
     active_nodes = set(solution["active_nodes"])
     active_thms = set(solution["active_thms"])
-    route_position = {node_id: index + 1 for index, node_id in enumerate(solution["route_nodes"])}
+    route_position: dict[str, int] = {}
+    for floor_id, route_nodes in solution["route_nodes_by_floor"].items():
+        for index, node_id in enumerate(route_nodes, start=1):
+            route_position[node_id] = index
 
     rows: list[dict[str, Any]] = []
     for record in artifacts.instance.stock_records:
@@ -1115,7 +1176,12 @@ def _grid_node_label(aisle: int, column: int) -> str:
     return f"AISLE_{aisle}_COLUMN_{column}"
 
 
-def write_distance_matrix_csv(instance: InstanceData, csv_path: str | Path) -> Path:
+def write_distance_matrix_csv(
+    instance: InstanceData,
+    csv_path: str | Path,
+    *,
+    config: ModelConfig | None = None,
+) -> Path:
     """Write the precomputed d_(n,m) matrix as a square CSV.
 
     The first metadata columns describe the origin node. Each remaining column
@@ -1123,6 +1189,7 @@ def write_distance_matrix_csv(instance: InstanceData, csv_path: str | Path) -> P
     matrix in external tools. The virtual depot is included as the first row
     and first destination column.
     """
+    config = config or ModelConfig()
     output_path = Path(csv_path)
     ordered_node_ids = _ordered_node_ids_with_depot(instance)
     fieldnames = ["NODE_ID", "FLOOR", "AISLE", "COLUMN", *ordered_node_ids]
@@ -1148,7 +1215,19 @@ def write_distance_matrix_csv(instance: InstanceData, csv_path: str | Path) -> P
                 if origin_id == destination_id:
                     distance = 0.0
                 else:
-                    distance = instance.distances[(origin_id, destination_id)]
+                    direct_distance = instance.distances.get((origin_id, destination_id))
+                    if direct_distance is not None:
+                        distance = direct_distance
+                    elif origin_id == DEPOT_ID:
+                        destination_node = instance.physical_nodes[destination_id]
+                        distance = get_entry_exit_distance(destination_node)
+                    elif destination_id == DEPOT_ID:
+                        origin_node = instance.physical_nodes[origin_id]
+                        distance = get_entry_exit_distance(origin_node)
+                    else:
+                        origin_node = instance.physical_nodes[origin_id]
+                        destination_node = instance.physical_nodes[destination_id]
+                        distance = get_distance(origin_node, destination_node, config)
                 row[destination_id] = _distance_cell_value(distance)
 
             writer.writerow(row)
@@ -1340,14 +1419,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.distance_matrix_output and matrix_only_mode:
         distance_instance = build_distance_matrix_instance(args.stock, floors=floors, articles=articles, config=config)
-        distance_output_path = write_distance_matrix_csv(distance_instance, args.distance_matrix_output)
+        distance_output_path = write_distance_matrix_csv(
+            distance_instance,
+            args.distance_matrix_output,
+            config=config,
+        )
         print(f"Distance matrix written to {distance_output_path}")
         return 0
 
     instance = build_instance(args.orders, args.stock, floors=floors, articles=articles, config=config)
 
     if args.distance_matrix_output:
-        distance_output_path = write_distance_matrix_csv(instance, args.distance_matrix_output)
+        distance_output_path = write_distance_matrix_csv(instance, args.distance_matrix_output, config=config)
         print(f"Distance matrix written to {distance_output_path}")
     if args.full_grid_distance_matrix_output:
         full_grid_output_path = write_full_grid_distance_matrix_csv(
