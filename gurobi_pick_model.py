@@ -6,10 +6,6 @@ an explicit virtual depot is added so the MTZ tour constraints are well posed.
 Without that anchor node, the textbook MTZ formulation in the TeX file would
 not define a feasible closed tour for arbitrary subsets of visited nodes.
 
-The sample CSVs are also not globally feasible as-is: some ordered articles do
-not exist in the stock file. This module validates that upfront and provides
-helpers for building smaller, feasible test instances such as "one floor and a
-few items", which is the next planned step for this project.
 """
 
 from __future__ import annotations
@@ -123,7 +119,13 @@ class ModelConfig:
     thm_weight: float = 15.0
     floor_weight: float = 30.0
     cross_floor_penalty_per_floor: float = 0.0
+    # Uygulama farkı:
+    # Model.tex'teki (x_ij, y_ij) ikilisi kodda tek bir semi-* y_ij ile sıkıştırılır.
+    #   True  -> y_ij semi-integer  (0 veya [1, s_ij] aralığında tam sayı)
+    #   False -> y_ij semi-continuous (0 veya [1, s_ij] aralığında reel)
     quantity_integral: bool = True
+    # Geriye dönük uyumluluk için tutuluyor; semi-* y_ij kullandığımız için artık
+    # ayrıca ayrı bir "pozitif pick" sıkılaştırmasına ihtiyaç yok.
     enforce_positive_pick_if_opened: bool = True
     max_route_arcs: int | None = 250_000
     model_name: str = "warehouse_picking"
@@ -154,7 +156,6 @@ class InstanceData:
 class ModelArtifacts:
     model: Any
     instance: InstanceData
-    x: dict[str, Any]
     y: dict[str, Any]
     u: dict[str, Any]
     v: dict[tuple[str, str], Any]
@@ -476,57 +477,18 @@ def suggest_test_articles(
     return [article_code for _, _, _, article_code in candidates[:max_articles]]
 
 
-def build_instance(
-    demand_csv: str | Path,
-    stock_csv: str | Path,
+def _build_instance_from_stock_records(
+    stock_records: Sequence[StockRecord],
     *,
-    floors: Iterable[str] | None = None,
-    articles: Iterable[int] | None = None,
-    config: ModelConfig | None = None,
+    config: ModelConfig,
+    demands: Mapping[int, int] | None = None,
+    demand_records: Sequence[DemandRecord] | None = None,
 ) -> InstanceData:
-    """Build the indexed sets and parameters used by the mathematical model.
-
-    Model.tex ile birebir eşleme:
-      - I       -> demand_records / demands
-      - J       -> stock_records
-      - N       -> physical_nodes
-      - t_i     -> demands
-      - s_ij    -> stock_records[*].stock
-      - d_{n,m} -> distances
-    """
-    config = config or ModelConfig()
-    demand_records = _filter_demands(load_demands(demand_csv), articles)
-    stock_records = _filter_stock(load_stock(stock_csv), floors, articles)
-
-    if not demand_records:
-        raise DataValidationError("No demand rows remain after filtering.")
     if not stock_records:
         raise DataValidationError("No stock rows remain after filtering.")
 
-    demands = {record.article_code: record.amount for record in demand_records}
-    available_by_article: dict[int, int] = defaultdict(int)
-    for record in stock_records:
-        available_by_article[record.article_code] += record.stock
-
-    missing = sorted(article for article in demands if available_by_article[article] == 0)
-    insufficient = sorted(
-        (article, demands[article], available_by_article[article])
-        for article in demands
-        if 0 < available_by_article[article] < demands[article]
-    )
-    if missing or insufficient:
-        message_parts = []
-        if missing:
-            sample = ", ".join(str(article) for article in missing[:15])
-            more = "" if len(missing) <= 15 else f", ... (+{len(missing) - 15} more)"
-            message_parts.append(f"missing stock for articles [{sample}{more}]")
-        if insufficient:
-            sample = ", ".join(f"{article} (need {need}, have {have})" for article, need, have in insufficient[:10])
-            more = "" if len(insufficient) <= 10 else f", ... (+{len(insufficient) - 10} more)"
-            message_parts.append(f"insufficient stock for [{sample}{more}]")
-        raise DataValidationError("Cannot build an exact-demand instance: " + "; ".join(message_parts) + ".")
-
-    stock_records = [record for record in stock_records if record.article_code in demands]
+    demand_map = dict(demands or {})
+    demand_record_list = list(demand_records or [])
 
     # J kümesinden N kümesine geçiş:
     # Model.tex'te j tam lokasyon, n ise fiziksel konumdur.
@@ -539,7 +501,10 @@ def build_instance(
     locations_by_thm: dict[str, list[str]] = defaultdict(list)
     nodes_by_floor: dict[str, list[str]] = defaultdict(list)
 
-    node_keys = sorted({(record.floor, record.aisle, record.column) for record in stock_records}, key=lambda key: (_floor_index(key[0]), key[1], key[2]))
+    node_keys = sorted(
+        {(record.floor, record.aisle, record.column) for record in stock_records},
+        key=lambda key: (_floor_index(key[0]), key[1], key[2]),
+    )
     for index, key in enumerate(node_keys, start=1):
         floor, aisle, column = key
         node = PhysicalNode(
@@ -581,9 +546,9 @@ def build_instance(
             distances[(origin_id, destination_id)] = get_distance(origin, destination, config)
 
     return InstanceData(
-        demands=demands,
-        demand_records=demand_records,
-        stock_records=stock_records,
+        demands=demand_map,
+        demand_records=demand_record_list,
+        stock_records=list(stock_records),
         physical_nodes=node_lookup,
         location_to_node=location_to_node,
         locations_by_article=dict(locations_by_article),
@@ -594,6 +559,81 @@ def build_instance(
     )
 
 
+def build_instance(
+    demand_csv: str | Path,
+    stock_csv: str | Path,
+    *,
+    floors: Iterable[str] | None = None,
+    articles: Iterable[int] | None = None,
+    config: ModelConfig | None = None,
+) -> InstanceData:
+    """Build the indexed sets and parameters used by the mathematical model.
+
+    Model.tex ile birebir eşleme:
+      - I       -> demand_records / demands
+      - J       -> stock_records
+      - N       -> physical_nodes
+      - t_i     -> demands
+      - s_ij    -> stock_records[*].stock
+      - d_{n,m} -> distances
+    """
+    config = config or ModelConfig()
+    demand_records = _filter_demands(load_demands(demand_csv), articles)
+    stock_records = _filter_stock(load_stock(stock_csv), floors, articles)
+
+    if not demand_records:
+        raise DataValidationError("No demand rows remain after filtering.")
+    demands = {record.article_code: record.amount for record in demand_records}
+    available_by_article: dict[int, int] = defaultdict(int)
+    for record in stock_records:
+        available_by_article[record.article_code] += record.stock
+
+    missing = sorted(article for article in demands if available_by_article[article] == 0)
+    insufficient = sorted(
+        (article, demands[article], available_by_article[article])
+        for article in demands
+        if 0 < available_by_article[article] < demands[article]
+    )
+    if missing or insufficient:
+        message_parts = []
+        if missing:
+            sample = ", ".join(str(article) for article in missing[:15])
+            more = "" if len(missing) <= 15 else f", ... (+{len(missing) - 15} more)"
+            message_parts.append(f"missing stock for articles [{sample}{more}]")
+        if insufficient:
+            sample = ", ".join(f"{article} (need {need}, have {have})" for article, need, have in insufficient[:10])
+            more = "" if len(insufficient) <= 10 else f", ... (+{len(insufficient) - 10} more)"
+            message_parts.append(f"insufficient stock for [{sample}{more}]")
+        raise DataValidationError("Cannot build an exact-demand instance: " + "; ".join(message_parts) + ".")
+
+    stock_records = [record for record in stock_records if record.article_code in demands]
+
+    return _build_instance_from_stock_records(
+        stock_records,
+        config=config,
+        demands=demands,
+        demand_records=demand_records,
+    )
+
+
+def build_distance_matrix_instance(
+    stock_csv: str | Path,
+    *,
+    floors: Iterable[str] | None = None,
+    articles: Iterable[int] | None = None,
+    config: ModelConfig | None = None,
+) -> InstanceData:
+    """Build a stock-only instance for distance matrix extraction.
+
+    Unlike build_instance(...), this helper does not require the filtered stock
+    to satisfy the exact order demand. It exists for geometry/network use cases
+    such as "give me all pairwise node distances on floor MZN1".
+    """
+    config = config or ModelConfig()
+    stock_records = _filter_stock(load_stock(stock_csv), floors, articles)
+    return _build_instance_from_stock_records(stock_records, config=config)
+
+
 def physical_node_lookup(physical_nodes: Mapping[tuple[str, int, int], PhysicalNode]) -> dict[str, PhysicalNode]:
     return {node.node_id: node for node in physical_nodes.values()}
 
@@ -601,9 +641,13 @@ def physical_node_lookup(physical_nodes: Mapping[tuple[str, int, int], PhysicalN
 def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None) -> ModelArtifacts:
     """Create the Gurobi model with comments aligned to Model.tex.
 
+    Uygulama farkı:
+      - Model.tex'teki x_ij ve y_ij birlikte kullanılıyor.
+      - Kodda ise bu ikili, tek bir semi-* y_ij değişkeninde birleştirilir:
+        y_ij = 0 ise lokasyon kullanılmaz, y_ij >= 1 ise lokasyon kullanılmış olur.
+
     Karar değişkenleri:
-      - x_ij in {0,1}: "i ürününün j lokasyonundan toplanıp toplanmama durumu"
-      - y_ij >= 0    : "i ürününün j lokasyonundan toplanan miktarı"
+      - y_ij semi-*  : "i ürününün j lokasyonundan toplanan miktarı"
       - u_n in {0,1} : "n konumunun ziyaret edilip edilmeme durumu"
       - v_{n,m}      : "n konumundan m konumuna doğrudan gidilme durumu"
       - p_n          : "n konumunun tur içindeki ziyaret sırası (MTZ kısıtı için)"
@@ -620,12 +664,14 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     floor_ids = sorted(instance.nodes_by_floor, key=_floor_index)
     thm_ids = sorted(instance.locations_by_thm)
     augmented_nodes = [DEPOT_ID, *node_ids]
+    stock_upper_bounds = {record.location_id: record.stock for record in instance.stock_records}
 
-    quantity_vtype = GRB.INTEGER if config.quantity_integral else GRB.CONTINUOUS
+    quantity_vtype = GRB.SEMIINT if config.quantity_integral else GRB.SEMICONT
 
     # Model.tex - "Karar Değişkenleri"
-    x = model.addVars(stock_ids, vtype=GRB.BINARY, name="x")
-    y = model.addVars(stock_ids, lb=0.0, vtype=quantity_vtype, name="y")
+    # x_ij koddan kaldırılmıştır; onun "açık mı kapalı mı" anlamı artık y_ij = 0 / y_ij >= 1
+    # ayrımıyla temsil edilir.
+    y = model.addVars(stock_ids, lb=1.0, ub=stock_upper_bounds, vtype=quantity_vtype, name="y")
     u = model.addVars(node_ids, vtype=GRB.BINARY, name="u")
     z = model.addVars(floor_ids, vtype=GRB.BINARY, name="z")
     b = model.addVars(thm_ids, vtype=GRB.BINARY, name="b")
@@ -659,33 +705,23 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     )
 
     for record in instance.stock_records:
-        # (cons:stok)
-        # "Bir lokasyondan toplanan ürün miktarı, o lokasyondaki stok miktarını geçemez."
-        model.addConstr(
-            y[record.location_id] <= record.stock * x[record.location_id],
-            name=f"stock_cap_{record.location_id}",
-        )
-
-        # Uygulama sıkılaştırması - Model.tex'te yok:
-        # Eğer x_ij = 1 ise, integral miktar modelinde y_ij en az 1 olsun.
-        # Bu, "açılmış ama sıfır alınmış" lokasyonları engeller.
-        if config.enforce_positive_pick_if_opened and config.quantity_integral:
-            model.addConstr(
-                y[record.location_id] >= x[record.location_id],
-                name=f"stock_open_lb_{record.location_id}",
-            )
+        # (cons:stok) uygulama eşdeğeri:
+        # Model.tex'te y_ij <= s_ij * x_ij vardır. Kodda x_ij kaldırıldığı için stok üst sınırı
+        # doğrudan y_ij'nin variable upper bound'u olarak tanımlanır: y_ij <= s_ij.
 
         # (cons:thm)
         # "Eğer bir lokasyondan ürün toplandıysa, ilgili THM kutusu açılmış sayılır."
+        # x_ij yerine y_ij > 0 kullanıldığından, bağ y_ij <= s_ij * b_j6 biçimine dönüşür.
         model.addConstr(
-            x[record.location_id] <= b[record.thm_id],
+            y[record.location_id] <= record.stock * b[record.thm_id],
             name=f"thm_link_{record.location_id}",
         )
 
         # (cons:ziyaret)
         # "Ürün toplama yapılan her lokasyonun bulunduğu fiziksel konuma uğranmış olmalıdır."
+        # x_ij yerine yine y_ij > 0 mantığı kullanılır: y_ij <= s_ij * u_n.
         model.addConstr(
-            x[record.location_id] <= u[instance.location_to_node[record.location_id]],
+            y[record.location_id] <= record.stock * u[instance.location_to_node[record.location_id]],
             name=f"visit_link_{record.location_id}",
         )
 
@@ -699,10 +735,10 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
 
     for node_id, location_ids in sorted(instance.locations_by_node.items()):
         # Uygulama tamamlayıcı bağı:
-        # Model.tex x_ij <= u_n yönünü verir. Burada ters yön de eklenir:
-        # bir fiziksel nokta ziyaret edilmişse, o düğümde en az bir lokasyon açılmış olmalıdır.
+        # Model.tex x_ij <= u_n yönünü verir. x_ij kaldırıldığı için ters yön şu hale gelir:
+        # bir fiziksel nokta ziyaret edilmişse, o düğümde toplam pick miktarı en az 1 olmalıdır.
         model.addConstr(
-            u[node_id] <= gp.quicksum(x[location_id] for location_id in location_ids),
+            u[node_id] <= gp.quicksum(y[location_id] for location_id in location_ids),
             name=f"visit_reverse_link_{node_id}",
         )
 
@@ -724,9 +760,9 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
 
     for thm_id, location_ids in sorted(instance.locations_by_thm.items()):
         # Uygulama tamamlayıcı bağı:
-        # b_j6 değişkeni 1 ise, o THM altında gerçekten en az bir açık lokasyon olsun.
+        # b_j6 değişkeni 1 ise, o THM altında gerçekten en az 1 birim pick olsun.
         model.addConstr(
-            b[thm_id] <= gp.quicksum(x[location_id] for location_id in location_ids),
+            b[thm_id] <= gp.quicksum(y[location_id] for location_id in location_ids),
             name=f"thm_reverse_link_{thm_id}",
         )
 
@@ -778,7 +814,7 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
             )
 
     model.update()
-    return ModelArtifacts(model=model, instance=instance, x=x, y=y, u=u, v=v, p=p, z=z, b=b)
+    return ModelArtifacts(model=model, instance=instance, y=y, u=u, v=v, p=p, z=z, b=b)
 
 
 def build_model_from_csv(
@@ -1055,6 +1091,129 @@ def write_alternative_locations_csv(
     return output_path
 
 
+def _ordered_node_ids_with_depot(instance: InstanceData) -> list[str]:
+    physical_node_ids = sorted(
+        instance.physical_nodes,
+        key=lambda node_id: (
+            _floor_index(instance.physical_nodes[node_id].floor),
+            instance.physical_nodes[node_id].aisle,
+            instance.physical_nodes[node_id].column,
+            node_id,
+        ),
+    )
+    return [DEPOT_ID, *physical_node_ids]
+
+
+def _distance_cell_value(distance: float, tolerance: float = 1e-9) -> int | str:
+    rounded_distance = round(distance)
+    if math.isclose(distance, rounded_distance, abs_tol=tolerance):
+        return int(rounded_distance)
+    return f"{distance:.6f}".rstrip("0").rstrip(".")
+
+
+def _grid_node_label(aisle: int, column: int) -> str:
+    return f"AISLE_{aisle}_COLUMN_{column}"
+
+
+def write_distance_matrix_csv(instance: InstanceData, csv_path: str | Path) -> Path:
+    """Write the precomputed d_(n,m) matrix as a square CSV.
+
+    The first metadata columns describe the origin node. Each remaining column
+    is a destination node ID, so the file can be used directly as a dense
+    matrix in external tools. The virtual depot is included as the first row
+    and first destination column.
+    """
+    output_path = Path(csv_path)
+    ordered_node_ids = _ordered_node_ids_with_depot(instance)
+    fieldnames = ["NODE_ID", "FLOOR", "AISLE", "COLUMN", *ordered_node_ids]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for origin_id in ordered_node_ids:
+            if origin_id == DEPOT_ID:
+                row = {"NODE_ID": origin_id, "FLOOR": "", "AISLE": "", "COLUMN": ""}
+            else:
+                origin_node = instance.physical_nodes[origin_id]
+                row = {
+                    "NODE_ID": origin_id,
+                    "FLOOR": origin_node.floor,
+                    "AISLE": origin_node.aisle,
+                    "COLUMN": origin_node.column,
+                }
+
+            for destination_id in ordered_node_ids:
+                if origin_id == destination_id:
+                    distance = 0.0
+                else:
+                    distance = instance.distances[(origin_id, destination_id)]
+                row[destination_id] = _distance_cell_value(distance)
+
+            writer.writerow(row)
+
+    return output_path
+
+
+def write_full_grid_distance_matrix_csv(
+    floor: str,
+    csv_path: str | Path,
+    *,
+    config: ModelConfig | None = None,
+) -> Path:
+    """Write the theoretical 27 x 20 node grid for exactly one floor.
+
+    This export ignores whether a node currently has stock. Its purpose is to
+    expose the warehouse geometry itself, ordered exactly as:
+    aisle 1 column 1, aisle 1 column 2, ..., aisle 27 column 20
+    on both the row and column axes.
+    """
+    normalized_floor = _normalize_floor(floor)
+    if normalized_floor is None:
+        raise DataValidationError(f"Invalid floor '{floor}'. Expected one of: {', '.join(FLOOR_ORDER)}.")
+
+    config = config or ModelConfig()
+    ordered_nodes = [
+        PhysicalNode(
+            node_id=_grid_node_label(aisle, column),
+            floor=normalized_floor,
+            floor_index=_floor_index(normalized_floor),
+            aisle=aisle,
+            column=column,
+        )
+        for aisle in range(1, TOTAL_AISLES + 1)
+        for column in range(1, TOTAL_COLUMNS + 1)
+    ]
+
+    destination_labels = [node.node_id for node in ordered_nodes]
+    fieldnames = ["NODE_LABEL", "FLOOR", "AISLE", "COLUMN", *destination_labels]
+    output_path = Path(csv_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for origin_node in ordered_nodes:
+            row = {
+                "NODE_LABEL": origin_node.node_id,
+                "FLOOR": origin_node.floor,
+                "AISLE": origin_node.aisle,
+                "COLUMN": origin_node.column,
+            }
+            for destination_node in ordered_nodes:
+                if origin_node.aisle == destination_node.aisle and origin_node.column == destination_node.column:
+                    distance = 0.0
+                else:
+                    distance = get_distance(origin_node, destination_node, config)
+                row[destination_node.node_id] = _distance_cell_value(distance)
+
+            writer.writerow(row)
+
+    return output_path
+
+
 def _parse_article_list(value: str | None) -> list[int] | None:
     if value is None or not value.strip():
         return None
@@ -1108,8 +1267,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--optimize run; pass an empty string to disable."
         ),
     )
+    parser.add_argument(
+        "--distance-matrix-output",
+        default=None,
+        help=(
+            "Optional square CSV output path for the precomputed distance matrix. "
+            "The file includes NODE_ID/FLOOR/AISLE/COLUMN metadata plus one column "
+            "per destination node, including the virtual depot. If used without "
+            "--write-lp or --optimize, the script writes the matrix after "
+            "preprocessing and exits."
+        ),
+    )
+    parser.add_argument(
+        "--full-grid-distance-matrix-output",
+        default=None,
+        help=(
+            "Optional square CSV output path for the full theoretical 27x20 node grid "
+            "of exactly one floor. Rows and columns are ordered as aisle 1 column 1, "
+            "aisle 1 column 2, ..., aisle 27 column 20. This export ignores stock "
+            "availability and is written after preprocessing if used without "
+            "--write-lp or --optimize."
+        ),
+    )
     parser.add_argument("--optimize", action="store_true", help="Run optimization after building the model.")
     parser.add_argument("--time-limit", type=float, default=None, help="Optional Gurobi time limit in seconds.")
+    parser.add_argument(
+        "--mip-gap",
+        type=float,
+        default=0.05,
+        help=(
+            "Relative MIP optimality gap target. Default is 0.05 (5%%). "
+            "Use 0 for an exact proven-optimal solve."
+        ),
+    )
     args = parser.parse_args(argv)
 
     config = ModelConfig(
@@ -1131,7 +1321,43 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     floors = _parse_floor_list(args.floors)
     articles = _parse_article_list(args.articles)
-    artifacts = build_model_from_csv(args.orders, args.stock, floors=floors, articles=articles, config=config)
+    matrix_only_mode = not args.write_lp and not args.optimize
+
+    if args.full_grid_distance_matrix_output:
+        if floors is None or len(floors) != 1:
+            raise DataValidationError(
+                "Full-grid distance matrix export requires exactly one floor filter, "
+                "for example: --floors MZN1."
+            )
+        full_grid_output_path = write_full_grid_distance_matrix_csv(
+            floors[0],
+            args.full_grid_distance_matrix_output,
+            config=config,
+        )
+        print(f"Full-grid distance matrix written to {full_grid_output_path}")
+        if matrix_only_mode and not args.distance_matrix_output:
+            return 0
+
+    if args.distance_matrix_output and matrix_only_mode:
+        distance_instance = build_distance_matrix_instance(args.stock, floors=floors, articles=articles, config=config)
+        distance_output_path = write_distance_matrix_csv(distance_instance, args.distance_matrix_output)
+        print(f"Distance matrix written to {distance_output_path}")
+        return 0
+
+    instance = build_instance(args.orders, args.stock, floors=floors, articles=articles, config=config)
+
+    if args.distance_matrix_output:
+        distance_output_path = write_distance_matrix_csv(instance, args.distance_matrix_output)
+        print(f"Distance matrix written to {distance_output_path}")
+    if args.full_grid_distance_matrix_output:
+        full_grid_output_path = write_full_grid_distance_matrix_csv(
+            floors[0],
+            args.full_grid_distance_matrix_output,
+            config=config,
+        )
+        print(f"Full-grid distance matrix written to {full_grid_output_path}")
+
+    artifacts = build_gurobi_model(instance, config=config)
 
     print(
         "Model built successfully with "
@@ -1146,6 +1372,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.time_limit is not None:
         artifacts.model.Params.TimeLimit = args.time_limit
+    if args.mip_gap is not None:
+        artifacts.model.Params.MIPGap = args.mip_gap
 
     if args.optimize:
         artifacts.model.optimize()
