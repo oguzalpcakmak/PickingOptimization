@@ -7,8 +7,8 @@ export const translations = {
     appTitle: 'Depo Simülasyonu',
     
     // Upload Section
-    uploadTitle: 'Excel dosyasını buraya sürükleyin veya tıklayarak seçin',
-    uploadHint: 'Sadece .xlsx ve .xls uzantılı dosyalar desteklenir',
+    uploadTitle: 'Excel veya CSV dosyasını buraya sürükleyin veya tıklayarak seçin',
+    uploadHint: 'Sadece .xlsx, .xls ve .csv uzantılı dosyalar desteklenir',
     loadTestData: 'Test Verisi Yükle',
     uploadedFile: 'Yüklenen dosya',
     
@@ -133,8 +133,8 @@ export const translations = {
     appTitle: 'Warehouse Simulation',
     
     // Upload Section
-    uploadTitle: 'Drag and drop Excel file here or click to select',
-    uploadHint: 'Only .xlsx and .xls files are supported',
+    uploadTitle: 'Drag and drop an Excel or CSV file here or click to select',
+    uploadHint: 'Only .xlsx, .xls, and .csv files are supported',
     loadTestData: 'Load Test Data',
     uploadedFile: 'Uploaded file',
     

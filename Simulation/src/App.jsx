@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import { 
   ConfigProvider, 
   theme, 
@@ -34,7 +35,7 @@ import {
   ShopOutlined,
   GlobalOutlined
 } from '@ant-design/icons';
-import { processExcel } from './utils/excelProcessor';
+import { processExcel, inspectPickData, PICK_DATA_FORMATS } from './utils/excelProcessor';
 import { processStockData, mergeStockWithPicks } from './utils/stockProcessor';
 import { 
   ELEVATOR_1_AISLE, 
@@ -67,6 +68,7 @@ function App() {
   const [currentSimStep, setCurrentSimStep] = useState(0);
   const [updatedStockData, setUpdatedStockData] = useState(null);
   const [stockStats, setStockStats] = useState(null);
+  const [inputFormat, setInputFormat] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -81,6 +83,7 @@ function App() {
   const loadTestData = useCallback(() => {
     setFile({ name: t(lang, 'testDataName') });
     setRawData(null);
+    setInputFormat(null);
     
     // PICKED_AMOUNT'a göre satırları çoğalt
     const expandedData = [];
@@ -281,91 +284,100 @@ function App() {
     if (!uploadedFile) return false;
 
     setFile(uploadedFile);
+    setRawData(null);
     setProcessedData(null);
     setStats(null);
     setIsTestData(false);
+    setShowVisualizer(false);
+    setSelectedGroupData([]);
+    setCurrentSimStep(0);
+    setUpdatedStockData(null);
+    setStockStats(null);
+    setInputFormat(null);
+    setProgress({ stage: '', progress: 0 });
     setProcessing(true);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        // "Grup Toplama Verisi" sheet'ini bul
-        const sheetName = 'Grup Toplama Verisi';
-        const stockSheetName = 'Stok Bilgisi';
-        
-        if (!workbook.SheetNames.includes(sheetName)) {
-          messageApi.error(`"${sheetName}" ${t(lang, 'sheetNotFound')}: ${workbook.SheetNames.join(', ')}`);
-          setProcessing(false);
-          return;
-        }
-        
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-        
-        // Kolon isimlerini kontrol et
-        const requiredColumns = ['Kullanıcı Kodu', 'TOPLANAN_THM', 'ARTICLE_CODE', 'DATE_START_EXECUTION', 'AREA', 'AISLE', 'X', 'Y', 'Z', 'TOPLANAN_ADET', 'PICKCAR_THM'];
-        const firstRow = jsonData[0] || {};
-        const missingColumns = requiredColumns.filter(col => !(col in firstRow));
-        
-        if (missingColumns.length > 0) {
-          messageApi.error(`${t(lang, 'missingColumns')}: ${missingColumns.join(', ')}`);
-          setProcessing(false);
-          return;
-        }
-        
-        messageApi.success(`${jsonData.length} ${t(lang, 'rowsRead')}`);
-        
-        // Stok sheet'ini oku (varsa)
-        let stockJsonData = null;
-        if (workbook.SheetNames.includes(stockSheetName)) {
-          const stockWorksheet = workbook.Sheets[stockSheetName];
-          stockJsonData = XLSX.utils.sheet_to_json(stockWorksheet, { defval: '' });
-          messageApi.info(`${stockJsonData.length} ${t(lang, 'stockRowsRead')}`);
-        }
-        
-        // Otomatik dönüştürme
-        setTimeout(() => {
-          try {
-            const { data: processedResult, stats: processStats } = processExcel(jsonData, (p) => {
-              setProgress(p);
-            });
+    (async () => {
+      let hasParsedInput = false;
 
-            setProcessedData(processedResult);
-            setStats(processStats);
-            setRawData(jsonData);
-            
-            // Stok verisi varsa işle ve birleştir
-            if (stockJsonData) {
-              const processedStock = processStockData(stockJsonData);
-              const { data: mergedStock, stats: mergeStats } = mergeStockWithPicks(processedStock, processedResult);
-              setUpdatedStockData(mergedStock);
-              setStockStats(mergeStats);
-              messageApi.success(t(lang, 'stockProcessed'));
-            }
-            
-            messageApi.success(t(lang, 'conversionComplete'));
-            setShowVisualizer(true);
-          } catch (error) {
-            messageApi.error(`${t(lang, 'conversionError')}: ${error.message}`);
-            console.error(error);
-          } finally {
-            setProcessing(false);
+      try {
+        const lowerFileName = uploadedFile.name?.toLowerCase() || '';
+        const stockSheetName = 'Stok Bilgisi';
+        let pickJsonData = [];
+        let stockJsonData = null;
+        if (lowerFileName.endsWith('.csv')) {
+          const csvText = await uploadedFile.text();
+          const parsedCsv = Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header) => header.replace(/^\uFEFF/, '').trim()
+          });
+
+          const parseErrors = parsedCsv.errors.filter((error) => error.code !== 'UndetectableDelimiter');
+          if (parseErrors.length > 0) {
+            throw new Error(parseErrors[0].message);
           }
-        }, 100);
+
+          pickJsonData = parsedCsv.data;
+        } else {
+          const workbookData = await uploadedFile.arrayBuffer();
+          const workbook = XLSX.read(workbookData, { type: 'array' });
+          const sheetName = workbook.SheetNames.includes('Grup Toplama Verisi')
+            ? 'Grup Toplama Verisi'
+            : workbook.SheetNames[0];
+
+          if (!sheetName) {
+            throw new Error(t(lang, 'fileReadError'));
+          }
+
+          const worksheet = workbook.Sheets[sheetName];
+          pickJsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+          if (workbook.SheetNames.includes(stockSheetName)) {
+            const stockWorksheet = workbook.Sheets[stockSheetName];
+            stockJsonData = XLSX.utils.sheet_to_json(stockWorksheet, { defval: '' });
+            messageApi.info(`${stockJsonData.length} ${t(lang, 'stockRowsRead')}`);
+          }
+        }
+
+        const inspection = inspectPickData(pickJsonData);
+        if (!inspection.format) {
+          messageApi.error(`${t(lang, 'missingColumns')}: ${inspection.missingColumns.join(', ')}`);
+          return;
+        }
+
+        hasParsedInput = true;
+        setInputFormat(inspection.format);
+        messageApi.success(`${inspection.rows.length} ${t(lang, 'rowsRead')}`);
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const { data: processedResult, stats: processStats } = processExcel(inspection.rows, (p) => {
+          setProgress(p);
+        });
+
+        setProcessedData(processedResult);
+        setStats(processStats);
+        setRawData(inspection.rows);
+        
+        if (stockJsonData) {
+          const processedStock = processStockData(stockJsonData);
+          const { data: mergedStock, stats: mergeStats } = mergeStockWithPicks(processedStock, processedResult);
+          setUpdatedStockData(mergedStock);
+          setStockStats(mergeStats);
+          messageApi.success(t(lang, 'stockProcessed'));
+        }
+        
+        messageApi.success(t(lang, 'conversionComplete'));
+        setShowVisualizer(true);
       } catch (error) {
-        messageApi.error(`${t(lang, 'excelReadError')}: ${error.message}`);
+        const errorKey = hasParsedInput ? 'conversionError' : 'excelReadError';
+        messageApi.error(`${t(lang, errorKey)}: ${error.message}`);
         console.error(error);
+      } finally {
         setProcessing(false);
       }
-    };
-    reader.onerror = () => {
-      messageApi.error(t(lang, 'fileReadError'));
-      setProcessing(false);
-    };
-    reader.readAsArrayBuffer(uploadedFile);
+    })();
     
     return false; // Prevent default upload behavior
   }, [messageApi, lang]);
@@ -408,6 +420,7 @@ function App() {
     setCurrentSimStep(0);
     setUpdatedStockData(null);
     setStockStats(null);
+    setInputFormat(null);
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
 
@@ -496,7 +509,7 @@ function App() {
               <Col xs={24} md={14}>
                 <Dragger
                   name="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.csv"
                   showUploadList={false}
                   beforeUpload={handleFileUpload}
                   style={{ padding: '20px 0' }}
@@ -686,7 +699,13 @@ function App() {
           {/* Visualizer */}
           {showVisualizer && processedData && (
             <Card style={{ marginBottom: 24 }}>
-              <PickVisualizer data={processedData} isDarkMode={isDarkMode} onGroupSelect={handleGroupSelect} lang={lang} />
+              <PickVisualizer
+                data={processedData}
+                isDarkMode={isDarkMode}
+                onGroupSelect={handleGroupSelect}
+                lang={lang}
+                skipNoTimeFilter={inputFormat === PICK_DATA_FORMATS.SOLVER_OUTPUT}
+              />
             </Card>
           )}
 

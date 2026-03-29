@@ -37,7 +37,13 @@ import {
 import { t } from '../locales/translations.js';
 import './PickVisualizer.css';
 
-function PickVisualizer({ data, isDarkMode = true, onGroupSelect, lang = 'tr' }) {
+function PickVisualizer({
+  data,
+  isDarkMode = true,
+  onGroupSelect,
+  lang = 'tr',
+  skipNoTimeFilter = false
+}) {
   const [selectedPicker, setSelectedPicker] = useState('');
   const [selectedPickcar, setSelectedPickcar] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
@@ -73,6 +79,10 @@ function PickVisualizer({ data, isDarkMode = true, onGroupSelect, lang = 'tr' })
 
   // TIME verisi eksik olan grupları tespit et
   const noTimeGroups = useMemo(() => {
+    if (skipNoTimeFilter) {
+      return new Set();
+    }
+
     const groups = {};
     
     data.forEach(row => {
@@ -95,7 +105,7 @@ function PickVisualizer({ data, isDarkMode = true, onGroupSelect, lang = 'tr' })
         .filter(([, info]) => info.hasNoTime)
         .map(([key]) => key)
     );
-  }, [data]);
+  }, [data, skipNoTimeFilter]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
