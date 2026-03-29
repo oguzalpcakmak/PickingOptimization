@@ -1,0 +1,740 @@
+.pick-visualizer {
+  background: transparent;
+  border-radius: 16px;
+  padding: 0;
+  margin-top: 0;
+  border: none;
+}
+
+.visualizer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.control-group.filter-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  flex-basis: 100%;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #e4e4e4;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: #00d9ff;
+}
+
+.filter-info {
+  font-size: 0.8rem;
+  color: #888;
+  font-style: italic;
+}
+
+.fullscreen-button {
+  margin-left: auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: rgba(0, 217, 255, 0.1);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 6px;
+  color: #00d9ff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fullscreen-button:hover {
+  background: rgba(0, 217, 255, 0.2);
+  border-color: #00d9ff;
+}
+
+.fullscreen-button.active {
+  background: rgba(0, 217, 255, 0.3);
+  border-color: #00d9ff;
+}
+
+.control-group label {
+  font-size: 0.85rem;
+  color: #a0a0a0;
+}
+
+.control-group select,
+.control-group input[type="range"] {
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: #e4e4e4;
+  font-size: 0.9rem;
+  min-width: 150px;
+}
+
+.control-group select:disabled {
+  opacity: 0.5;
+}
+
+.control-group input[type="range"] {
+  -webkit-appearance: none;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #00d9ff;
+  cursor: pointer;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.control-buttons button {
+  padding: 0.5rem 1rem;
+  font-size: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.control-buttons button:hover {
+  background: rgba(0, 217, 255, 0.2);
+  border-color: #00d9ff;
+}
+
+.current-pick-info {
+  background: rgba(0, 217, 255, 0.1);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.current-pick-info.return-info {
+  background: rgba(255, 100, 100, 0.1);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+}
+
+.current-pick-info.return-info .info-value {
+  color: #ff6b6b;
+}
+
+.current-pick-info.start-info {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.current-pick-info.start-info .info-value {
+  color: #ffc107;
+}
+
+.current-pick-info.stair-info {
+  background: rgba(156, 39, 176, 0.1);
+  border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+.current-pick-info.stair-info .info-value {
+  color: #9c27b0;
+}
+
+.current-pick-info.stair-return-info {
+  background: rgba(156, 39, 176, 0.1);
+  border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+.current-pick-info.stair-return-info .info-value {
+  color: #9c27b0;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.info-label {
+  font-size: 0.75rem;
+  color: #a0a0a0;
+  text-transform: uppercase;
+}
+
+.info-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #00d9ff;
+}
+
+.layout-container {
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  padding: 1rem;
+  padding-top: 2rem;  /* Asansörler için ekstra boşluk */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.layout-wrapper {
+  display: inline-block;
+  overflow: visible;
+}
+
+.layout {
+  position: relative;
+  background: #1a1a2e;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  will-change: transform;
+  overflow: visible;
+}
+
+/* Cross Aisle */
+.cross-aisle {
+  position: absolute;
+  background: rgba(255, 200, 100, 0.15);
+  border: 1px dashed rgba(255, 200, 100, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cross-aisle-label {
+  font-size: 0.5rem;
+  color: rgba(255, 200, 100, 0.8);
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+}
+
+/* Asansörler */
+.elevator {
+  position: absolute;
+  background: rgba(128, 128, 128, 0.3);
+  border: 2px solid rgba(128, 128, 128, 0.6);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.elevator-label {
+  font-size: 0.5rem;
+  color: rgba(200, 200, 200, 0.9);
+  font-weight: bold;
+}
+
+.elevator-active {
+  background: rgba(255, 193, 7, 0.4);
+  border-color: rgba(255, 193, 7, 0.9);
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+}
+
+.elevator-active .elevator-label {
+  color: #ffc107;
+}
+
+/* Merdivenler */
+.stair {
+  position: absolute;
+  background: rgba(156, 39, 176, 0.3);
+  border: 2px solid rgba(156, 39, 176, 0.6);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.stair-label {
+  font-size: 0.5rem;
+  color: rgba(200, 200, 200, 0.9);
+  font-weight: bold;
+}
+
+.stair-active {
+  background: rgba(156, 39, 176, 0.5);
+  border-color: rgba(156, 39, 176, 0.9);
+  box-shadow: 0 0 10px rgba(156, 39, 176, 0.5);
+}
+
+.stair-active .stair-label {
+  color: #ce93d8;
+}
+
+/* Koridorlar */
+.aisle {
+  position: absolute;
+  background: rgba(100, 150, 255, 0.1);
+  border-left: 1px solid rgba(100, 150, 255, 0.3);
+  border-right: 1px solid rgba(100, 150, 255, 0.3);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 0.2rem;
+}
+
+.aisle-label {
+  font-size: 0.4rem;
+  color: rgba(100, 150, 255, 0.8);
+  font-weight: bold;
+}
+
+/* Raflar */
+.shelf {
+  position: absolute;
+  background: rgba(150, 100, 50, 0.5);
+  border: 1px solid rgba(150, 100, 50, 0.8);
+  transition: all 0.3s ease;
+}
+
+/* Aktif raf - Sol taraf (L) */
+.shelf-active-left {
+  background: rgba(255, 100, 100, 0.8);
+  border: 2px solid rgba(255, 50, 50, 1);
+  box-shadow: 0 0 8px rgba(255, 50, 50, 0.8);
+  z-index: 5;
+}
+
+/* Aktif raf - Sağ taraf (R) */
+.shelf-active-right {
+  background: rgba(100, 200, 255, 0.8);
+  border: 2px solid rgba(50, 150, 255, 1);
+  box-shadow: 0 0 8px rgba(50, 150, 255, 0.8);
+  z-index: 5;
+}
+
+/* Önceki adımların izi */
+.pick-trail {
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.trail-order {
+  font-size: 0.4rem;
+  color: rgba(0, 255, 136, 0.8);
+  background: rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  border-radius: 50%;
+  width: 0.8rem;
+  height: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Yol çizgileri */
+.path-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Mevcut pozisyon */
+.current-position {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+}
+
+.position-marker {
+  width: 1.5rem;
+  height: 1.5rem;
+  background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(0, 217, 255, 0.8);
+  position: relative;
+  z-index: 2;
+}
+
+/* Asansöre dönüş pozisyonu */
+.return-position .position-marker,
+.return-marker {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+  box-shadow: 0 0 10px rgba(255, 100, 100, 0.8);
+}
+
+.return-position .position-pulse {
+  background: rgba(255, 100, 100, 0.3);
+}
+
+/* Asansörde başlangıç pozisyonu */
+.start-position .position-marker,
+.start-marker {
+  background: linear-gradient(135deg, #ffc107 0%, #ffdb58 100%);
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.8);
+}
+
+.start-position .position-pulse {
+  background: rgba(255, 193, 7, 0.3);
+}
+
+/* Merdiven pozisyonları */
+.stair-position .position-marker,
+.stair-marker {
+  background: linear-gradient(135deg, #9c27b0 0%, #ce93d8 100%);
+  box-shadow: 0 0 10px rgba(156, 39, 176, 0.8);
+}
+
+.stair-position .position-pulse {
+  background: rgba(156, 39, 176, 0.3);
+}
+
+.stair-return-position .position-marker,
+.stair-return-marker {
+  background: linear-gradient(135deg, #9c27b0 0%, #ce93d8 100%);
+  box-shadow: 0 0 10px rgba(156, 39, 176, 0.8);
+}
+
+.stair-return-position .position-pulse {
+  background: rgba(156, 39, 176, 0.3);
+}
+
+.position-order {
+  font-size: 0.5rem;
+  font-weight: bold;
+  color: #1a1a2e;
+}
+
+.position-pulse {
+  position: absolute;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgba(0, 217, 255, 0.3);
+  animation: pulse 1.5s ease-out infinite;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* Legend */
+.layout-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #a0a0a0;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.legend-color {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.legend-color.legend-shelf {
+  background: rgba(150, 100, 50, 0.5);
+  border: 1px solid rgba(150, 100, 50, 0.8);
+}
+
+.legend-color.legend-aisle {
+  background: rgba(100, 150, 255, 0.1);
+  border: 1px solid rgba(100, 150, 255, 0.5);
+}
+
+.legend-color.legend-cross-aisle {
+  background: rgba(255, 200, 100, 0.15);
+  border: 1px dashed rgba(255, 200, 100, 0.4);
+}
+
+.legend-color.legend-elevator {
+  background: rgba(255, 193, 7, 0.4);
+  border: 2px solid rgba(255, 193, 7, 0.9);
+}
+
+.legend-color.legend-shelf-left {
+  background: rgba(255, 100, 100, 0.8);
+  border: 2px solid rgba(255, 50, 50, 1);
+}
+
+.legend-color.legend-shelf-right {
+  background: rgba(100, 200, 255, 0.8);
+  border: 2px solid rgba(50, 150, 255, 1);
+}
+
+.legend-color.legend-current {
+  background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+  border-radius: 50%;
+}
+
+.legend-color.legend-trail {
+  background: rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  border-radius: 50%;
+}
+
+/* ===== LIGHT MODE STYLES ===== */
+.pick-visualizer.light-mode .visualizer-controls {
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.pick-visualizer.light-mode .control-group.filter-toggle {
+  border-bottom-color: rgba(0, 0, 0, 0.05);
+}
+
+.pick-visualizer.light-mode .checkbox-label {
+  color: #333;
+}
+
+.pick-visualizer.light-mode .checkbox-label input[type="checkbox"] {
+  accent-color: #1890ff;
+}
+
+.pick-visualizer.light-mode .filter-info {
+  color: #666;
+}
+
+.pick-visualizer.light-mode .fullscreen-button {
+  background: rgba(24, 144, 255, 0.1);
+  border-color: rgba(24, 144, 255, 0.3);
+  color: #1890ff;
+}
+
+.pick-visualizer.light-mode .fullscreen-button:hover {
+  background: rgba(24, 144, 255, 0.2);
+  border-color: #1890ff;
+}
+
+.pick-visualizer.light-mode .fullscreen-button.active {
+  background: rgba(24, 144, 255, 0.3);
+  border-color: #1890ff;
+}
+
+.pick-visualizer.light-mode .control-group label {
+  color: #555;
+}
+
+.pick-visualizer.light-mode .control-group select,
+.pick-visualizer.light-mode .control-group input[type="range"] {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  color: #333;
+}
+
+.pick-visualizer.light-mode .control-group input[type="range"] {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.pick-visualizer.light-mode .control-group input[type="range"]::-webkit-slider-thumb {
+  background: #1890ff;
+}
+
+.pick-visualizer.light-mode .control-buttons button {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  color: #333;
+}
+
+.pick-visualizer.light-mode .control-buttons button:hover {
+  background: rgba(24, 144, 255, 0.2);
+  border-color: #1890ff;
+}
+
+.pick-visualizer.light-mode .current-pick-info {
+  background: rgba(24, 144, 255, 0.1);
+  border-color: rgba(24, 144, 255, 0.3);
+}
+
+.pick-visualizer.light-mode .info-label {
+  color: #666;
+}
+
+.pick-visualizer.light-mode .info-value {
+  color: #1890ff;
+}
+
+.pick-visualizer.light-mode .layout-container {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.pick-visualizer.light-mode .layout {
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Cross Aisle - Light Mode */
+.pick-visualizer.light-mode .cross-aisle {
+  background: rgba(200, 150, 50, 0.2);
+  border-color: rgba(200, 150, 50, 0.5);
+}
+
+.pick-visualizer.light-mode .cross-aisle-label {
+  color: rgba(150, 100, 0, 0.9);
+}
+
+/* Koridorlar - Light Mode */
+.pick-visualizer.light-mode .aisle {
+  background: rgba(50, 100, 200, 0.15);
+  border-left-color: rgba(50, 100, 200, 0.4);
+  border-right-color: rgba(50, 100, 200, 0.4);
+}
+
+.pick-visualizer.light-mode .aisle-label {
+  color: rgba(50, 100, 200, 0.9);
+}
+
+/* Raflar - Light Mode */
+.pick-visualizer.light-mode .shelf {
+  background: rgba(120, 80, 40, 0.4);
+  border-color: rgba(120, 80, 40, 0.7);
+}
+
+/* Aktif raf - Sol taraf (L) - Light Mode */
+.pick-visualizer.light-mode .shelf-active-left {
+  background: rgba(220, 50, 50, 0.7);
+  border-color: rgba(200, 0, 0, 1);
+  box-shadow: 0 0 10px rgba(200, 0, 0, 0.6);
+}
+
+/* Aktif raf - Sağ taraf (R) - Light Mode */
+.pick-visualizer.light-mode .shelf-active-right {
+  background: rgba(50, 120, 200, 0.7);
+  border-color: rgba(0, 80, 180, 1);
+  box-shadow: 0 0 10px rgba(0, 80, 180, 0.6);
+}
+
+/* Önceki adımların izi - Light Mode */
+.pick-visualizer.light-mode .trail-order {
+  color: rgba(0, 150, 80, 0.9);
+  background: rgba(0, 150, 80, 0.2);
+  border-color: rgba(0, 150, 80, 0.5);
+}
+
+/* Mevcut pozisyon - Light Mode */
+.pick-visualizer.light-mode .position-marker {
+  background: linear-gradient(135deg, #1890ff 0%, #52c41a 100%);
+  box-shadow: 0 0 12px rgba(24, 144, 255, 0.7);
+}
+
+.pick-visualizer.light-mode .position-order {
+  color: #fff;
+}
+
+.pick-visualizer.light-mode .position-pulse {
+  background: rgba(24, 144, 255, 0.3);
+}
+
+/* Legend - Light Mode */
+.pick-visualizer.light-mode .layout-legend {
+  border-top-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.pick-visualizer.light-mode .legend-item {
+  color: #555;
+}
+
+.pick-visualizer.light-mode .legend-color.legend-shelf {
+  background: rgba(120, 80, 40, 0.4);
+  border-color: rgba(120, 80, 40, 0.7);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-aisle {
+  background: rgba(50, 100, 200, 0.15);
+  border-color: rgba(50, 100, 200, 0.5);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-cross-aisle {
+  background: rgba(200, 150, 50, 0.2);
+  border-color: rgba(200, 150, 50, 0.5);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-elevator {
+  background: rgba(255, 193, 7, 0.5);
+  border-color: rgba(200, 150, 0, 0.9);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-shelf-left {
+  background: rgba(220, 50, 50, 0.7);
+  border-color: rgba(200, 0, 0, 1);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-shelf-right {
+  background: rgba(50, 120, 200, 0.7);
+  border-color: rgba(0, 80, 180, 1);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-current {
+  background: linear-gradient(135deg, #1890ff 0%, #52c41a 100%);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-trail {
+  background: rgba(0, 150, 80, 0.2);
+  border-color: rgba(0, 150, 80, 0.5);
+}

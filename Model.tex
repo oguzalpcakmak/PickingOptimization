@@ -1,0 +1,105 @@
+% !TeX program = lualatex
+\documentclass[11pt, a4paper]{article}
+
+% --- EVRENSEL ÖNSÖZ BLOĞU ---
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{fontspec}
+\usepackage[turkish, bidi=basic, provide=*]{babel}
+
+% Noto Sans font ayarları
+\babelprovide[import, onchar=ids fonts]{turkish}
+\babelprovide[import, onchar=ids fonts]{english}
+\babelfont{rm}{Noto Sans}
+
+% Liste simgeleri için
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+
+% Matematik ve Tablo Paketleri
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+
+% Bölüm numaralandırmasını kaldırmak için (isteğe bağlı)
+\setcounter{secnumdepth}{0}
+
+\begin{document}
+
+\title{Depo Toplama Rotası Optimizasyonu: Matematiksel Model}
+\author{}
+\date{}
+\maketitle
+
+\section{Kümeler ve İndisler}
+
+\begin{itemize}
+    \item $i \in I$: Ürün artikel kodları kümesi, $I = \{1, \dots, 3388\}$
+    \item $j_1 \in J_1$: Katlar, $J_1 = \{1, 2, 3, 4, 5, 6\}$
+    \item $j_2 \in J_2$: Koridorlar, $J_2 = \{1, \dots, 27\}$
+    \item $j_3 \in J_3$: Koridor tarafı (Sol: 0, Sağ: 1), $J_3 = \{0, 1\}$
+    \item $j_4 \in J_4$: Sütunlar, $J_4 = \{1, \dots, 20\}$
+    \item $j_5 \in J_5$: Raflar, $J_5 = \{1, 2, 3, 4, 5, 6, 7\}$
+    \item $j_6 \in J_6$: THM (Taşıma Hazırlama Merkezi) kodu
+    \item $j = (j_1, j_2, j_3, j_4, j_5, j_6)$: 6 boyutlu tam lokasyon indisi, $j \in J$
+    \item $n, m = (j_1, j_2, j_4)$: 3 boyutlu fiziksel konum indisi, $n, m \in N$
+\end{itemize}
+
+\section{Parametreler}
+
+\begin{itemize}
+    \item $d_{n,m}$: $n$ konumu ile $m$ konumu arasındaki Manhattan mesafesi
+    \item $s_{ij}$: $i$ ürününün $j$ lokasyonundaki mevcut stok miktarı
+    \item $t_i$: $i$ ürününden toplanması gereken toplam miktar
+    \item $w_1, w_2, w_3$: Amaç fonksiyonu ağırlıkları (Sırasıyla mesafe, kutu sayısı ve kat sayısı için)
+\end{itemize}
+
+\section{Karar Değişkenleri}
+
+\begin{itemize}
+    \item $x_{ij} \in \{0, 1\}$: $i$ ürününün $j$ lokasyonundan toplanıp toplanmama durumu
+    \item $y_{ij} \geq 0$: $i$ ürününün $j$ lokasyonundan toplanan miktarı
+    \item $u_n \in \{0, 1\}$: $n$ konumunun ziyaret edilip edilmeme durumu
+    \item $v_{n,m} \in \{0, 1\}$: $n$ konumundan $m$ konumuna doğrudan gidilme durumu
+    \item $p_n$: $n$ konumunun tur içindeki ziyaret sırası (MTZ kısıtı için)
+    \item $z_{j_1} \in \{0, 1\}$: $j_1$ numaralı kata girilip girilmediği durumu
+    \item $b_{j_6} \in \{0, 1\}$: $j_6$ numaralı THM kutusunun açılıp açılmadığı durumu
+\end{itemize}
+
+\section{Amaç Fonksiyonu}
+
+\begin{equation}
+    \min Z = w_1 \sum_{n \in N} \sum_{m \in N} d_{n,m} v_{n,m} + w_2 \sum_{j_6 \in J_6} b_{j_6} + w_3 \sum_{j_1 \in J_1} z_{j_1}
+\end{equation}
+
+\noindent \textbf{Terim Açıklamaları:}
+\begin{itemize}
+    \item \textbf{Terim 1:} Toplam yürünen Manhattan mesafesi.
+    \item \textbf{Terim 2:} Toplam kullanılan (açılan) THM kutusu sayısı.
+    \item \textbf{Terim 3:} Toplam girilen (aktifleşen) kat sayısı.
+\end{itemize}
+
+\section{Kısıtlar}
+
+\begin{flalign}
+    & y_{ij} \leq x_{ij} \cdot s_{ij} & \forall i \in I, \forall j \in J \label{cons:stok} \\
+    & x_{ij} \leq b_{j_6} & \forall i \in I, \forall j \in J \label{cons:thm} \\
+    & \sum_{j \in J} y_{ij} = t_i & \forall i \in I \label{cons:talep} \\
+    & x_{ij} \leq u_n & \forall i \in I, \forall n \in N, \forall j \in J(n) \label{cons:ziyaret} \\
+    & u_n \leq z_{j_1} & \forall j_1 \in J_1, \forall n \in N(j_1) \label{cons:kat} \\
+    & \sum_{m \in N} v_{n,m} = u_n & \forall n \in N \label{cons:flow1} \\
+    & \sum_{m \in N} v_{m,n} = u_n & \forall n \in N \label{cons:flow2} \\
+    & p_n - p_m + |N| \cdot v_{n,m} \leq |N| - 1 & \forall n, m \in N, n \neq m \label{cons:mtz}
+\end{flalign}
+
+\noindent \textbf{Kısıt Açıklamaları:}
+\begin{itemize}
+    \item \textbf{(\ref{cons:stok})}: Bir lokasyondan toplanan ürün miktarı, o lokasyondaki stok miktarını geçemez.
+    \item \textbf{(\ref{cons:thm})}: Eğer bir lokasyondan ürün toplandıysa, ilgili THM kutusu açılmış sayılır.
+    \item \textbf{(\ref{cons:talep})}: Her ürün için toplanması gereken toplam miktar sağlanmalıdır.
+    \item \textbf{(\ref{cons:ziyaret})}: Ürün toplama yapılan her lokasyonun bulunduğu fiziksel konuma uğranmış olmalıdır.
+    \item \textbf{(\ref{cons:kat})}: Eğer bir konuma gidildiyse, o konumun bulunduğu kat ziyaret edilmiş sayılır.
+    \item \textbf{(\ref{cons:flow1})-(\ref{cons:flow2})}: Akış korunumu kısıtları. Bir noktaya girildiyse oradan çıkılmalıdır.
+    \item \textbf{(\ref{cons:mtz})}: Miller-Tucker-Zemlin (MTZ) alt tur eleme kısıtı. Rotaların tek bir kapalı döngü olmasını ve alt turların oluşmamasını sağlar.
+\end{itemize}
+
+\end{document}
