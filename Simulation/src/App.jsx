@@ -33,9 +33,11 @@ import {
   TeamOutlined,
   NodeIndexOutlined,
   ShopOutlined,
-  GlobalOutlined
+  GlobalOutlined,
+  EnvironmentOutlined
 } from '@ant-design/icons';
 import { processExcel, inspectPickData, PICK_DATA_FORMATS } from './utils/excelProcessor';
+import { processAlternativeLocations } from './utils/alternativeLocationProcessor';
 import { processStockData, mergeStockWithPicks } from './utils/stockProcessor';
 import { 
   ELEVATOR_1_AISLE, 
@@ -69,6 +71,9 @@ function App() {
   const [updatedStockData, setUpdatedStockData] = useState(null);
   const [stockStats, setStockStats] = useState(null);
   const [inputFormat, setInputFormat] = useState(null);
+  const [alternativeFile, setAlternativeFile] = useState(null);
+  const [alternativeLocations, setAlternativeLocations] = useState([]);
+  const [alternativeStats, setAlternativeStats] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -280,6 +285,58 @@ function App() {
     setShowVisualizer(true);
   }, [messageApi, lang]);
 
+  const handleAlternativeUpload = useCallback((uploadedFile) => {
+    if (!uploadedFile) return false;
+
+    (async () => {
+      try {
+        const lowerFileName = uploadedFile.name?.toLowerCase() || '';
+        let alternativeRawData = [];
+
+        if (lowerFileName.endsWith('.csv')) {
+          const csvText = await uploadedFile.text();
+          const parsedCsv = Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header) => header.replace(/^\uFEFF/, '').trim()
+          });
+
+          const parseErrors = parsedCsv.errors.filter((error) => error.code !== 'UndetectableDelimiter');
+          if (parseErrors.length > 0) {
+            throw new Error(parseErrors[0].message);
+          }
+
+          alternativeRawData = parsedCsv.data;
+        } else {
+          const workbookData = await uploadedFile.arrayBuffer();
+          const workbook = XLSX.read(workbookData, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+
+          if (!sheetName) {
+            throw new Error(t(lang, 'fileReadError'));
+          }
+
+          alternativeRawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        }
+
+        const { data, stats } = processAlternativeLocations(alternativeRawData);
+        setAlternativeFile(uploadedFile);
+        setAlternativeLocations(data);
+        setAlternativeStats(stats);
+        setShowVisualizer(true);
+
+        messageApi.success(
+          `${stats.uniqueCells} ${t(lang, 'alternativeCellsHighlighted')} (${stats.alternativeRows} ${t(lang, 'rows')})`
+        );
+      } catch (error) {
+        messageApi.error(`${t(lang, 'alternativeReadError')}: ${error.message}`);
+        console.error(error);
+      }
+    })();
+
+    return false;
+  }, [lang, messageApi]);
+
   const handleFileUpload = useCallback((uploadedFile) => {
     if (!uploadedFile) return false;
 
@@ -421,8 +478,13 @@ function App() {
     setUpdatedStockData(null);
     setStockStats(null);
     setInputFormat(null);
+    setAlternativeFile(null);
+    setAlternativeLocations([]);
+    setAlternativeStats(null);
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
+
+  const hasVisualizerData = processedData !== null || alternativeLocations.length > 0;
 
   /**
    * İşleme aşamasına göre etiket döndürür
@@ -543,6 +605,22 @@ function App() {
                     >
                       {t(lang, 'loadTestData')}
                     </Button>
+                    <Upload
+                      accept=".csv,.xlsx,.xls"
+                      showUploadList={false}
+                      beforeUpload={handleAlternativeUpload}
+                    >
+                      <Button
+                        icon={<EnvironmentOutlined />}
+                        size="large"
+                        style={{ borderColor: '#13c2c2', color: '#13c2c2' }}
+                      >
+                        {t(lang, 'uploadAlternativeFile')}
+                      </Button>
+                    </Upload>
+                    <Text type="secondary" style={{ textAlign: 'center' }}>
+                      {t(lang, 'uploadAlternativeHint')}
+                    </Text>
                   </Flex>
                 </Card>
               </Col>
@@ -555,6 +633,17 @@ function App() {
                 type="success"
                 showIcon
                 icon={<FileTextOutlined />}
+              />
+            )}
+
+            {alternativeFile && alternativeStats && (
+              <Alert
+                style={{ marginTop: 16 }}
+                message={`${t(lang, 'alternativeFileUploaded')}: ${alternativeFile.name}`}
+                description={`${alternativeStats.uniqueCells} ${t(lang, 'alternativeCellsHighlighted')} | ${alternativeStats.alternativeRows} ${t(lang, 'rows')}`}
+                type="info"
+                showIcon
+                icon={<EnvironmentOutlined />}
               />
             )}
           </Card>
@@ -673,7 +762,7 @@ function App() {
                   {t(lang, 'downloadStockExcel')}
                 </Button>
               )}
-              {processedData && (
+              {hasVisualizerData && (
                 <Button 
                   type={showVisualizer ? 'primary' : 'default'}
                   icon={<LineChartOutlined />} 
@@ -697,14 +786,15 @@ function App() {
           </Card>
 
           {/* Visualizer */}
-          {showVisualizer && processedData && (
+          {showVisualizer && hasVisualizerData && (
             <Card style={{ marginBottom: 24 }}>
               <PickVisualizer
-                data={processedData}
+                data={processedData || []}
                 isDarkMode={isDarkMode}
                 onGroupSelect={handleGroupSelect}
                 lang={lang}
                 skipNoTimeFilter={inputFormat === PICK_DATA_FORMATS.SOLVER_OUTPUT}
+                alternativeLocations={alternativeLocations}
               />
             </Card>
           )}

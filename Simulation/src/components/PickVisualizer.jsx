@@ -42,7 +42,8 @@ function PickVisualizer({
   isDarkMode = true,
   onGroupSelect,
   lang = 'tr',
-  skipNoTimeFilter = false
+  skipNoTimeFilter = false,
+  alternativeLocations = []
 }) {
   const [selectedPicker, setSelectedPicker] = useState('');
   const [selectedPickcar, setSelectedPickcar] = useState('');
@@ -53,6 +54,37 @@ function PickVisualizer({
   const [filterSingleFloor, setFilterSingleFloor] = useState(true);
   const [filterHasNoTime, setFilterHasNoTime] = useState(true);
   const containerRef = useRef(null);
+  const hasPickData = data.length > 0;
+
+  const alternativeCellMap = useMemo(() => {
+    const cellMap = new Map();
+
+    alternativeLocations.forEach((row) => {
+      const aisle = parseInt(row.AISLE, 10);
+      const column = parseInt(row.COLUMN, 10);
+      const visualSide = row.LEFT_OR_RIGHT === 'L' ? 'R' : 'L';
+
+      if (Number.isNaN(aisle) || Number.isNaN(column) || !visualSide) {
+        return;
+      }
+
+      const key = `${aisle}|${column}|${visualSide}`;
+      if (!cellMap.has(key)) {
+        cellMap.set(key, {
+          articles: new Set(),
+          floors: new Set(),
+          shelves: new Set()
+        });
+      }
+
+      const cellInfo = cellMap.get(key);
+      if (row.ARTICLE_CODE) cellInfo.articles.add(row.ARTICLE_CODE);
+      if (row.AREA) cellInfo.floors.add(row.AREA);
+      if (row.SHELF) cellInfo.shelves.add(row.SHELF);
+    });
+
+    return cellMap;
+  }, [alternativeLocations]);
 
   // Birden fazla kata giden grupları tespit et
   const multiFloorGroups = useMemo(() => {
@@ -506,28 +538,32 @@ function PickVisualizer({
     <div className={`pick-visualizer ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
       <div className="visualizer-controls">
         <div className="control-group filter-toggle">
-          <Checkbox
-            checked={filterSingleFloor}
-            onChange={(e) => {
-              setFilterSingleFloor(e.target.checked);
-              setSelectedPicker('');
-              setSelectedPickcar('');
-            }}
-          >
-            {t(lang, 'filterMultiFloor')}
-          </Checkbox>
-          <span className="filter-info">
-            ({multiFloorGroups.size} {t(lang, 'filteredGroups')})
-          </span>
-          <Checkbox
-            checked={filterHasNoTime}
-            onChange={(e) => setFilterHasNoTime(e.target.checked)}
-          >
-            {t(lang, 'filterNoTime')}
-          </Checkbox>
-          <span className="filter-info">
-            ({noTimeGroups.size} {t(lang, 'noTimeFiltered')})
-          </span>
+          {hasPickData && (
+            <>
+              <Checkbox
+                checked={filterSingleFloor}
+                onChange={(e) => {
+                  setFilterSingleFloor(e.target.checked);
+                  setSelectedPicker('');
+                  setSelectedPickcar('');
+                }}
+              >
+                {t(lang, 'filterMultiFloor')}
+              </Checkbox>
+              <span className="filter-info">
+                ({multiFloorGroups.size} {t(lang, 'filteredGroups')})
+              </span>
+              <Checkbox
+                checked={filterHasNoTime}
+                onChange={(e) => setFilterHasNoTime(e.target.checked)}
+              >
+                {t(lang, 'filterNoTime')}
+              </Checkbox>
+              <span className="filter-info">
+                ({noTimeGroups.size} {t(lang, 'noTimeFiltered')})
+              </span>
+            </>
+          )}
           <button 
             className={`fullscreen-button ${isFullscreen ? 'active' : ''}`}
             onClick={() => setIsFullscreen(!isFullscreen)}
@@ -537,32 +573,36 @@ function PickVisualizer({
           </button>
         </div>
 
-        <div className="control-group">
-          <label>{t(lang, 'pickerLabel')}</label>
-          <select 
-            value={selectedPicker} 
-            onChange={(e) => setSelectedPicker(e.target.value)}
-          >
-            <option value="">{t(lang, 'selectPlaceholder')}</option>
-            {pickerCodes.map(code => (
-              <option key={code} value={code}>{code}</option>
-            ))}
-          </select>
-        </div>
+        {hasPickData && (
+          <>
+            <div className="control-group">
+              <label>{t(lang, 'pickerLabel')}</label>
+              <select 
+                value={selectedPicker} 
+                onChange={(e) => setSelectedPicker(e.target.value)}
+              >
+                <option value="">{t(lang, 'selectPlaceholder')}</option>
+                {pickerCodes.map(code => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
 
-        <div className="control-group">
-          <label>{t(lang, 'pickcarLabel')}</label>
-          <select 
-            value={selectedPickcar} 
-            onChange={(e) => setSelectedPickcar(e.target.value)}
-            disabled={!selectedPicker}
-          >
-            <option value="">{t(lang, 'selectPlaceholder')}</option>
-            {pickcarCodes.map(code => (
-              <option key={code} value={code}>{code}</option>
-            ))}
-          </select>
-        </div>
+            <div className="control-group">
+              <label>{t(lang, 'pickcarLabel')}</label>
+              <select 
+                value={selectedPickcar} 
+                onChange={(e) => setSelectedPickcar(e.target.value)}
+                disabled={!selectedPicker}
+              >
+                <option value="">{t(lang, 'selectPlaceholder')}</option>
+                {pickcarCodes.map(code => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
 
         {pickData.length > 0 && (
           <>
@@ -855,17 +895,36 @@ function PickVisualizer({
               shelf.aisle === parseInt(currentPick.AISLE) && 
               shelf.column === parseInt(currentPick.COLUMN) && 
               shelf.side === visualSide;
+            const alternativeInfo = alternativeCellMap.get(`${shelf.aisle}|${shelf.column}|${shelf.side}`);
+            const isAlternative = Boolean(alternativeInfo);
+            const titleParts = [];
+
+            if (isAlternative) {
+              titleParts.push(t(lang, 'legendAlternative'));
+              if (alternativeInfo.articles.size > 0) {
+                titleParts.push(
+                  `ARTICLE_CODE: ${Array.from(alternativeInfo.articles).slice(0, 5).join(', ')}`
+                );
+              }
+              if (alternativeInfo.floors.size > 0) {
+                titleParts.push(`AREA: ${Array.from(alternativeInfo.floors).join(', ')}`);
+              }
+              if (alternativeInfo.shelves.size > 0) {
+                titleParts.push(`SHELF: ${Array.from(alternativeInfo.shelves).join(', ')}`);
+              }
+            }
             
             return (
               <div
                 key={`shelf-${i}`}
-                className={`shelf ${isActive ? (shelf.side === 'L' ? 'shelf-active-left' : 'shelf-active-right') : ''}`}
+                className={`shelf ${isAlternative ? 'shelf-alternative' : ''} ${isActive ? (shelf.side === 'L' ? 'shelf-active-left' : 'shelf-active-right') : ''}`}
                 style={{
                   left: `${shelf.x}rem`,
                   top: `${shelf.y}rem`,
                   width: `${shelf.width}rem`,
                   height: `${shelf.height}rem`
                 }}
+                title={titleParts.join('\n') || undefined}
               />
             );
           })}
@@ -1176,6 +1235,12 @@ function PickVisualizer({
           <div className="legend-color legend-shelf-right"></div>
           <span>{t(lang, 'legendShelfRight')}</span>
         </div>
+        {alternativeLocations.length > 0 && (
+          <div className="legend-item">
+            <div className="legend-color legend-alternative"></div>
+            <span>{t(lang, 'legendAlternative')}</span>
+          </div>
+        )}
         <div className="legend-item">
           <div className="legend-color legend-current"></div>
           <span>{t(lang, 'legendCurrent')}</span>

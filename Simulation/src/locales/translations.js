@@ -9,8 +9,11 @@ export const translations = {
     // Upload Section
     uploadTitle: 'Excel veya CSV dosyasını buraya sürükleyin veya tıklayarak seçin',
     uploadHint: 'Sadece .xlsx, .xls ve .csv uzantılı dosyalar desteklenir',
+    uploadAlternativeFile: 'Alternatif Lokasyon Yükle',
+    uploadAlternativeHint: 'AlternativeLocationsOutput.csv dosyasını yükleyip alternatif hücreleri renklendirebilirsiniz',
     loadTestData: 'Test Verisi Yükle',
     uploadedFile: 'Yüklenen dosya',
+    alternativeFileUploaded: 'Alternatif dosya',
     
     // Messages
     testDataLoaded: 'Test verisi yüklendi (6255 satır, önceden dönüştürülmüş)',
@@ -22,8 +25,10 @@ export const translations = {
     conversionError: 'Dönüştürme hatası',
     excelReadError: 'Excel okuma hatası',
     fileReadError: 'Dosya okunamadı',
+    alternativeReadError: 'Alternatif lokasyon dosyası okunamadı',
     excelDownloaded: 'Excel dosyası indirildi',
     reset: 'Sıfırlandı',
+    alternativeCellsHighlighted: 'alternatif hücre vurgulandı',
     
     // Progress stages
     stageTransform: 'Satırlar dönüştürülüyor...',
@@ -112,6 +117,7 @@ export const translations = {
     legendStair: 'Merdiven',
     legendShelfLeft: 'Sol Raf (L)',
     legendShelfRight: 'Sağ Raf (R)',
+    legendAlternative: 'Alternatif Lokasyon',
     legendCurrent: 'Mevcut Konum',
     legendTrail: 'Geçmiş Adımlar',
     
@@ -135,8 +141,11 @@ export const translations = {
     // Upload Section
     uploadTitle: 'Drag and drop an Excel or CSV file here or click to select',
     uploadHint: 'Only .xlsx, .xls, and .csv files are supported',
+    uploadAlternativeFile: 'Upload Alternatives',
+    uploadAlternativeHint: 'Upload AlternativeLocationsOutput.csv to highlight alternative cells',
     loadTestData: 'Load Test Data',
     uploadedFile: 'Uploaded file',
+    alternativeFileUploaded: 'Alternative file',
     
     // Messages
     testDataLoaded: 'Test data loaded (6255 rows, pre-processed)',
@@ -148,8 +157,10 @@ export const translations = {
     conversionError: 'Conversion error',
     excelReadError: 'Excel reading error',
     fileReadError: 'Could not read file',
+    alternativeReadError: 'Could not read alternative locations file',
     excelDownloaded: 'Excel file downloaded',
     reset: 'Reset complete',
+    alternativeCellsHighlighted: 'alternative cells highlighted',
     
     // Progress stages
     stageTransform: 'Transforming rows...',
@@ -238,6 +249,7 @@ export const translations = {
     legendStair: 'Stair',
     legendShelfLeft: 'Left Shelf (L)',
     legendShelfRight: 'Right Shelf (R)',
+    legendAlternative: 'Alternative Location',
     legendCurrent: 'Current Position',
     legendTrail: 'Past Steps',
     

@@ -120,8 +120,8 @@ class ModelConfig:
     #   cross_floor_penalty_per_floor -> katlar arası geçişe ek ceza
     #   max_route_arcs                -> aşırı büyük MTZ grafikleri için güvenlik sınırı
     distance_weight: float = 1.0
-    thm_weight: float = 1.0
-    floor_weight: float = 1.0
+    thm_weight: float = 15.0
+    floor_weight: float = 30.0
     cross_floor_penalty_per_floor: float = 0.0
     quantity_integral: bool = True
     enforce_positive_pick_if_opened: bool = True
@@ -954,6 +954,107 @@ def write_pick_data_csv(
     return output_path
 
 
+def build_alternative_location_rows(
+    artifacts: ModelArtifacts,
+    tolerance: float = 1e-6,
+) -> list[dict[str, Any]]:
+    """Create a debug-friendly CSV view of all candidate locations.
+
+    This export is intentionally wider than PickDataSample.csv because its
+    purpose is validation, not downstream execution. Each row corresponds to
+    one feasible stock location j for an ordered article i in the solved
+    instance, and the flags show whether that location/THM/node was actually
+    used by the optimizer.
+    """
+    solution = extract_solution(artifacts, tolerance=tolerance)
+    picked_quantity_by_location = {
+        pick["location_id"]: pick["picked_quantity"] for pick in solution["picked_locations"]
+    }
+    active_nodes = set(solution["active_nodes"])
+    active_thms = set(solution["active_thms"])
+    route_position = {node_id: index + 1 for index, node_id in enumerate(solution["route_nodes"])}
+
+    rows: list[dict[str, Any]] = []
+    for record in artifacts.instance.stock_records:
+        node_id = artifacts.instance.location_to_node[record.location_id]
+        picked_quantity = picked_quantity_by_location.get(record.location_id, 0.0)
+        is_selected = picked_quantity > tolerance
+
+        rows.append(
+            {
+                "ARTICLE_CODE": record.article_code,
+                "ARTICLE_DEMAND": artifacts.instance.demands[record.article_code],
+                "LOCATION_ID": record.location_id,
+                "THM_ID": record.thm_id,
+                "FLOOR": record.floor,
+                "AISLE": record.aisle,
+                "COLUMN": record.column,
+                "SHELF": record.shelf,
+                "LEFT_OR_RIGHT": record.side,
+                "AVAILABLE_STOCK": record.stock,
+                "NODE_ID": node_id,
+                "NODE_VISITED": 1 if node_id in active_nodes else 0,
+                "THM_OPENED": 1 if record.thm_id in active_thms else 0,
+                "IS_SELECTED": 1 if is_selected else 0,
+                "PICKED_AMOUNT": _format_pick_amount(picked_quantity, tolerance=tolerance) if is_selected else 0,
+                "PICK_ORDER": route_position.get(node_id, ""),
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            int(row["ARTICLE_CODE"]),
+            -int(row["IS_SELECTED"]),
+            int(row["PICK_ORDER"]) if str(row["PICK_ORDER"]).strip() else 10**9,
+            _floor_index(str(row["FLOOR"])),
+            int(row["AISLE"]),
+            int(row["COLUMN"]),
+            int(row["SHELF"]),
+            str(row["LEFT_OR_RIGHT"]),
+            str(row["THM_ID"]),
+            str(row["LOCATION_ID"]),
+        )
+    )
+    return rows
+
+
+def write_alternative_locations_csv(
+    artifacts: ModelArtifacts,
+    csv_path: str | Path,
+    tolerance: float = 1e-6,
+) -> Path:
+    """Write all feasible candidate locations for the solved instance."""
+    output_path = Path(csv_path)
+    rows = build_alternative_location_rows(artifacts, tolerance=tolerance)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames = [
+        "ARTICLE_CODE",
+        "ARTICLE_DEMAND",
+        "LOCATION_ID",
+        "THM_ID",
+        "FLOOR",
+        "AISLE",
+        "COLUMN",
+        "SHELF",
+        "LEFT_OR_RIGHT",
+        "AVAILABLE_STOCK",
+        "NODE_ID",
+        "NODE_VISITED",
+        "THM_OPENED",
+        "IS_SELECTED",
+        "PICKED_AMOUNT",
+        "PICK_ORDER",
+    ]
+
+    with output_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return output_path
+
+
 def _parse_article_list(value: str | None) -> list[int] | None:
     if value is None or not value.strip():
         return None
@@ -996,6 +1097,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Output CSV path for the solved pick list in PickDataSample.csv format "
             "plus PICK_ORDER. Written after a feasible --optimize run; pass an empty "
             "string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--alternative-locations-output",
+        default="AlternativeLocationsOutput.csv",
+        help=(
+            "Output CSV path listing every feasible candidate location for the solved "
+            "instance, with selected/opened/visited flags. Written after a feasible "
+            "--optimize run; pass an empty string to disable."
         ),
     )
     parser.add_argument("--optimize", action="store_true", help="Run optimization after building the model.")
@@ -1048,6 +1158,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.pick_data_output:
                 output_path = write_pick_data_csv(artifacts, args.pick_data_output)
                 print(f"Pick data written to {output_path}")
+            if args.alternative_locations_output:
+                alternative_output_path = write_alternative_locations_csv(
+                    artifacts,
+                    args.alternative_locations_output,
+                )
+                print(f"Alternative locations written to {alternative_output_path}")
 
     return 0
 

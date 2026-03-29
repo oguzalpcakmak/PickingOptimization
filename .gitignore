@@ -182,3 +182,4 @@ cython_debug/
 .DS_Store
 gurobi.lic
 api-key.txt
+node_modules/
