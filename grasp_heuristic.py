@@ -78,6 +78,7 @@ def construct_once(
     loc_lookup,
     weights: ObjectiveWeights,
     *,
+    route_estimator: str,
     alpha: float,
     article_rcl_size: int,
     location_rcl_size: int,
@@ -85,7 +86,11 @@ def construct_once(
     deterministic: bool = False,
 ) -> tuple[ConstructionState, float]:
     start = time.perf_counter()
-    state = ConstructionState(loc_lookup, weights)
+    state = ConstructionState(
+        loc_lookup,
+        weights,
+        route_estimator=route_estimator,
+    )
     remaining_articles = list(article_order)
 
     while remaining_articles:
@@ -126,6 +131,7 @@ def solve(
     article_rcl_size: int = 6,
     location_rcl_size: int = 5,
     seed: int = 7,
+    construction_route_estimator: str = "insertion",
 ):
     total_start = time.perf_counter()
     phase_times: dict[str, float] = {}
@@ -178,6 +184,7 @@ def solve(
             candidates_by_article,
             loc_lookup,
             weights,
+            route_estimator=construction_route_estimator,
             alpha=alpha,
             article_rcl_size=article_rcl_size,
             location_rcl_size=location_rcl_size,
@@ -239,6 +246,7 @@ def solve(
             "rcl_alpha": f"{alpha:.2f}",
             "article_rcl_size": article_rcl_size,
             "location_rcl_size": location_rcl_size,
+            "construction_route_estimator": construction_route_estimator,
             "elite_seed": "deterministic iteration 1",
         }
     )
@@ -260,6 +268,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--article-rcl-size", type=int, default=6, help="Randomize next article among this many top-priority articles.")
     parser.add_argument("--location-rcl-size", type=int, default=5, help="Randomize next location among this many best-scoring locations.")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--construction-route-estimator",
+        choices=("best_of_4", "insertion"),
+        default="insertion",
+        help="Floor-route scorer used during construction. 'best_of_4' is experimental.",
+    )
     parser.add_argument(
         "--output",
         "--pick-data-output",
@@ -295,6 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         article_rcl_size=args.article_rcl_size,
         location_rcl_size=args.location_rcl_size,
         seed=args.seed,
+        construction_route_estimator=args.construction_route_estimator,
     )
     print_report(solution)
 

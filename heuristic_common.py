@@ -17,6 +17,7 @@ import csv
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -55,6 +56,20 @@ STAIRS = (
 
 Node2D = tuple[int, int]
 NodeKey = tuple[str, int, int]
+
+FRONT = "F"
+MIDDLE = "M"
+BACK = "B"
+ENDPOINTS = (FRONT, MIDDLE, BACK)
+
+FRONT_Y = CROSS_AISLE_WIDTH
+MIDDLE_Y = CROSS_AISLE_WIDTH + (10 * COLUMN_LENGTH) + CROSS_AISLE_WIDTH
+BACK_Y = CROSS_AISLE_WIDTH + (10 * COLUMN_LENGTH) + CROSS_AISLE_WIDTH + (10 * COLUMN_LENGTH) + CROSS_AISLE_WIDTH
+ENDPOINT_Y = {
+    FRONT: FRONT_Y,
+    MIDDLE: MIDDLE_Y,
+    BACK: BACK_Y,
+}
 
 
 class DataError(ValueError):
@@ -98,10 +113,13 @@ class CandidateScore:
     unit_cost: float
     marginal_cost: float
     route_delta: float
-    insert_index: int
+    insert_index: int | None
     new_floor: bool
     new_thm: bool
     new_node: bool
+    route_nodes: tuple[Node2D, ...] | None = None
+    route_total_cost: float | None = None
+    route_policy: str | None = None
 
 
 @dataclass
@@ -134,9 +152,18 @@ class Solution:
 class ConstructionState:
     """Incremental state used by the constructive heuristics."""
 
-    def __init__(self, loc_lookup: dict[str, Loc], weights: ObjectiveWeights) -> None:
+    def __init__(
+        self,
+        loc_lookup: dict[str, Loc],
+        weights: ObjectiveWeights,
+        *,
+        route_estimator: str = "insertion",
+    ) -> None:
         self.loc_lookup = dict(loc_lookup)
         self.weights = weights
+        if route_estimator not in {"insertion", "best_of_4"}:
+            raise DataError(f"Unsupported route estimator '{route_estimator}'.")
+        self.route_estimator = route_estimator
         self.remaining_stock = {lid: loc.stock for lid, loc in loc_lookup.items()}
         self.picks_by_location: dict[str, int] = {}
         self.picks_by_article: dict[int, dict[str, int]] = defaultdict(dict)
@@ -145,6 +172,28 @@ class ConstructionState:
         self.active_nodes_by_floor: dict[str, set[Node2D]] = defaultdict(set)
         self.route_by_floor: dict[str, list[Node2D]] = defaultdict(list)
         self.route_cost_by_floor: dict[str, float] = defaultdict(float)
+        self.route_policy_by_floor: dict[str, str] = {}
+
+    def _evaluate_route_addition(
+        self,
+        floor: str,
+        node: Node2D,
+    ) -> tuple[float, int | None, tuple[Node2D, ...] | None, float | None, str | None]:
+        current_route = self.route_by_floor[floor]
+        current_cost = self.route_cost_by_floor[floor]
+        insertion_delta, insert_index = best_insertion(current_route, node)
+        if self.route_estimator == "insertion":
+            return insertion_delta, insert_index, None, None, None
+
+        insertion_total_cost = current_cost + insertion_delta
+
+        active_nodes = set(self.active_nodes_by_floor[floor])
+        active_nodes.add(node)
+        estimated_route, estimated_cost, route_policy = estimate_route_with_best_of_4(active_nodes)
+        if estimated_cost + 1e-9 >= current_cost and estimated_cost + 1e-9 < insertion_total_cost:
+            route_delta = estimated_cost - current_cost
+            return route_delta, None, estimated_route, estimated_cost, route_policy
+        return insertion_delta, insert_index, None, None, None
 
     def evaluate_candidate(self, loc: Loc, remaining_demand: int) -> CandidateScore | None:
         available = self.remaining_stock.get(loc.lid, 0)
@@ -157,9 +206,13 @@ class ConstructionState:
         new_node = loc.node2d not in self.active_nodes_by_floor[loc.floor]
 
         if new_node:
-            route_delta, insert_index = best_insertion(self.route_by_floor[loc.floor], loc.node2d)
+            route_delta, insert_index, route_nodes, route_total_cost, route_policy = self._evaluate_route_addition(
+                loc.floor,
+                loc.node2d,
+            )
         else:
             route_delta, insert_index = 0.0, len(self.route_by_floor[loc.floor])
+            route_nodes, route_total_cost, route_policy = None, None, None
 
         marginal_cost = (
             (self.weights.distance * route_delta)
@@ -178,6 +231,9 @@ class ConstructionState:
             new_floor=new_floor,
             new_thm=new_thm,
             new_node=new_node,
+            route_nodes=route_nodes,
+            route_total_cost=route_total_cost,
+            route_policy=route_policy,
         )
 
     def commit(self, candidate: CandidateScore) -> None:
@@ -200,9 +256,21 @@ class ConstructionState:
             self.active_thms.add(loc.thm_id)
         if candidate.new_node:
             floor_route = self.route_by_floor[loc.floor]
-            floor_route.insert(candidate.insert_index, loc.node2d)
+            if candidate.route_nodes is not None:
+                self.route_by_floor[loc.floor] = list(candidate.route_nodes)
+                self.route_cost_by_floor[loc.floor] = (
+                    candidate.route_total_cost
+                    if candidate.route_total_cost is not None
+                    else self.route_cost_by_floor[loc.floor] + candidate.route_delta
+                )
+                if candidate.route_policy:
+                    self.route_policy_by_floor[loc.floor] = candidate.route_policy
+            else:
+                if candidate.insert_index is None:
+                    raise DataError(f"Missing insertion index for {loc.lid}.")
+                floor_route.insert(candidate.insert_index, loc.node2d)
+                self.route_cost_by_floor[loc.floor] += candidate.route_delta
             self.active_nodes_by_floor[loc.floor].add(loc.node2d)
-            self.route_cost_by_floor[loc.floor] += candidate.route_delta
 
     def estimated_objective(self) -> float:
         return (
@@ -337,6 +405,310 @@ def route_cost(route: Sequence[Node2D]) -> float:
         total += same_floor_distance(route[index], route[index + 1])
     total += entry_exit_distance(route[-1])
     return total
+
+
+def depot_to_endpoint_cost(aisle: int, endpoint: str) -> float:
+    elevator_num = nearest_elevator(aisle)
+    stair_id = nearest_stair_to_elevator(elevator_num)
+    stair_x, _ = stair_position(stair_id)
+    elevator_x = x_coord(ELEVATOR_AISLES[elevator_num])
+    stair_to_elevator = abs(stair_x - elevator_x) + CROSS_AISLE_WIDTH
+    horizontal = abs(aisle - ELEVATOR_AISLES[elevator_num]) * AISLE_PITCH
+    return stair_to_elevator + horizontal + (ENDPOINT_Y[endpoint] - FRONT_Y)
+
+
+def horizontal_cross_aisle_cost(aisle_a: int, aisle_b: int) -> float:
+    return abs(x_coord(aisle_a) - x_coord(aisle_b))
+
+
+def shortest_line_cover_cost(columns: Sequence[int], start_endpoint: str, end_endpoint: str) -> tuple[float, str]:
+    positions = sorted(y_coord(column) for column in set(columns))
+    left = positions[0]
+    right = positions[-1]
+    start_y = ENDPOINT_Y[start_endpoint]
+    end_y = ENDPOINT_Y[end_endpoint]
+
+    forward = abs(start_y - left) + (right - left) + abs(end_y - right)
+    backward = abs(start_y - right) + (right - left) + abs(end_y - left)
+    if forward <= backward:
+        return forward, "LR"
+    return backward, "RL"
+
+
+def first_visit_column_order(
+    columns: Sequence[int],
+    start_endpoint: str,
+    end_endpoint: str,
+    pattern: str,
+) -> list[int]:
+    unique_columns = sorted(set(columns), key=y_coord)
+    start_y = ENDPOINT_Y[start_endpoint]
+    end_y = ENDPOINT_Y[end_endpoint]
+    left_y = y_coord(unique_columns[0])
+    right_y = y_coord(unique_columns[-1])
+
+    if pattern == "LR":
+        checkpoints = [start_y, left_y, right_y, end_y]
+    else:
+        checkpoints = [start_y, right_y, left_y, end_y]
+
+    seen: set[int] = set()
+    order: list[int] = []
+
+    for seg_start, seg_end in zip(checkpoints, checkpoints[1:]):
+        ascending = seg_end >= seg_start
+        segment_columns = [
+            column
+            for column in unique_columns
+            if min(seg_start, seg_end) - 1e-9 <= y_coord(column) <= max(seg_start, seg_end) + 1e-9
+        ]
+        if not ascending:
+            segment_columns = list(reversed(segment_columns))
+        for column in segment_columns:
+            if column not in seen:
+                seen.add(column)
+                order.append(column)
+
+    for column in unique_columns:
+        if column not in seen:
+            order.append(column)
+    return order
+
+
+def _aisle_has_upper_and_lower(columns: Sequence[int]) -> tuple[bool, bool]:
+    has_upper = any(column <= 10 for column in columns)
+    has_lower = any(column > 10 for column in columns)
+    return has_upper, has_lower
+
+
+def s_shape_allowed_pairs(columns: Sequence[int]) -> set[tuple[str, str]]:
+    has_upper, has_lower = _aisle_has_upper_and_lower(columns)
+    if has_upper and has_lower:
+        return {(FRONT, BACK), (BACK, FRONT)}
+    if has_upper:
+        return {(FRONT, MIDDLE), (MIDDLE, FRONT)}
+    return {(MIDDLE, BACK), (BACK, MIDDLE)}
+
+
+def largest_gap_allowed_pairs(columns: Sequence[int]) -> set[tuple[str, str]]:
+    has_upper, has_lower = _aisle_has_upper_and_lower(columns)
+    if has_upper and has_lower:
+        return {(FRONT, FRONT), (MIDDLE, MIDDLE), (BACK, BACK)}
+    if has_upper:
+        return {(FRONT, FRONT), (MIDDLE, MIDDLE)}
+    return {(MIDDLE, MIDDLE), (BACK, BACK)}
+
+
+def combined_allowed_pairs(columns: Sequence[int]) -> set[tuple[str, str]]:
+    has_upper, has_lower = _aisle_has_upper_and_lower(columns)
+    pairs = s_shape_allowed_pairs(columns) | largest_gap_allowed_pairs(columns)
+    if has_upper and has_lower:
+        pairs |= {(FRONT, MIDDLE), (MIDDLE, FRONT), (MIDDLE, BACK), (BACK, MIDDLE)}
+    return pairs
+
+
+def _reconstruct_dp_route(
+    aisle_order: Sequence[int],
+    by_aisle: dict[int, list[int]],
+    allowed_pairs_by_aisle: dict[int, set[tuple[str, str]]],
+) -> tuple[list[Node2D], float] | None:
+    if not aisle_order:
+        return [], 0.0
+
+    service_costs: dict[int, dict[tuple[str, str], tuple[float, str]]] = {}
+    for aisle in aisle_order:
+        aisle_service_costs: dict[tuple[str, str], tuple[float, str]] = {}
+        for start, end in allowed_pairs_by_aisle[aisle]:
+            aisle_service_costs[(start, end)] = shortest_line_cover_cost(by_aisle[aisle], start, end)
+        if not aisle_service_costs:
+            return None
+        service_costs[aisle] = aisle_service_costs
+
+    dp: list[dict[str, tuple[float, tuple[str, str] | None]]] = []
+    first_aisle = aisle_order[0]
+    first_layer: dict[str, tuple[float, tuple[str, str] | None]] = {}
+    for start, end in service_costs[first_aisle]:
+        cost, _ = service_costs[first_aisle][(start, end)]
+        total = depot_to_endpoint_cost(first_aisle, start) + cost
+        current = first_layer.get(end)
+        marker = ("START", start)
+        if current is None or total < current[0]:
+            first_layer[end] = (total, marker)
+    if not first_layer:
+        return None
+    dp.append(first_layer)
+
+    for index in range(1, len(aisle_order)):
+        aisle = aisle_order[index]
+        prev_aisle = aisle_order[index - 1]
+        layer: dict[str, tuple[float, tuple[str, str] | None]] = {}
+        for entry in ENDPOINTS:
+            prev_state = dp[index - 1].get(entry)
+            if prev_state is None:
+                continue
+            transfer = horizontal_cross_aisle_cost(prev_aisle, aisle)
+            for start, end in service_costs[aisle]:
+                if start != entry:
+                    continue
+                service, _ = service_costs[aisle][(start, end)]
+                total = prev_state[0] + transfer + service
+                current = layer.get(end)
+                marker = (entry, end)
+                if current is None or total < current[0]:
+                    layer[end] = (total, marker)
+        if not layer:
+            return None
+        dp.append(layer)
+
+    last_aisle = aisle_order[-1]
+    best_end_state: tuple[float, str] | None = None
+    for end in ENDPOINTS:
+        state = dp[-1].get(end)
+        if state is None:
+            continue
+        total = state[0] + depot_to_endpoint_cost(last_aisle, end)
+        if best_end_state is None or total < best_end_state[0]:
+            best_end_state = (total, end)
+    if best_end_state is None:
+        return None
+
+    current_end = best_end_state[1]
+    path_states: list[tuple[str, str]] = []
+    for index in range(len(aisle_order) - 1, -1, -1):
+        marker = dp[index][current_end][1]
+        if marker is None:
+            return None
+        if marker[0] == "START":
+            path_states.append((marker[1], current_end))
+            break
+        entry, end = marker
+        path_states.append((entry, end))
+        current_end = entry
+    path_states.reverse()
+
+    route: list[Node2D] = []
+    for aisle, (start, end) in zip(aisle_order, path_states):
+        _, pattern = service_costs[aisle][(start, end)]
+        for column in first_visit_column_order(by_aisle[aisle], start, end, pattern):
+            route.append((aisle, column))
+    return route, route_cost(route)
+
+
+def _build_combined_break_candidates(aisles: Sequence[int]) -> list[int]:
+    if len(aisles) < 3:
+        return []
+    return list(range(1, len(aisles) - 1))
+
+
+def _median_break(aisles: Sequence[int]) -> int | None:
+    candidates = _build_combined_break_candidates(aisles)
+    if not candidates:
+        return None
+    return candidates[len(candidates) // 2]
+
+
+def route_with_policy(
+    nodes: Sequence[Node2D],
+    *,
+    policy: str,
+) -> tuple[tuple[Node2D, ...], float] | None:
+    if not nodes:
+        return tuple(), 0.0
+
+    by_aisle: dict[int, list[int]] = defaultdict(list)
+    for aisle, column in nodes:
+        by_aisle[aisle].append(column)
+
+    sorted_aisles = sorted(by_aisle)
+    aisle_orders: list[list[int]]
+    if policy == "combined_plus":
+        aisle_orders = [sorted_aisles, list(reversed(sorted_aisles))]
+    else:
+        aisle_orders = [sorted_aisles, list(reversed(sorted_aisles))]
+
+    best_route: tuple[Node2D, ...] | None = None
+    best_cost = math.inf
+
+    for aisle_order in aisle_orders:
+        allowed_sets: list[dict[int, set[tuple[str, str]]]] = []
+        if policy == "s_shape":
+            allowed_sets.append({aisle: s_shape_allowed_pairs(by_aisle[aisle]) for aisle in aisle_order})
+        elif policy == "largest_gap":
+            allowed_sets.append({aisle: largest_gap_allowed_pairs(by_aisle[aisle]) for aisle in aisle_order})
+        elif policy == "combined":
+            break_index = _median_break(aisle_order)
+            if break_index is None:
+                allowed_sets.append({aisle: combined_allowed_pairs(by_aisle[aisle]) for aisle in aisle_order})
+            else:
+                allowed: dict[int, set[tuple[str, str]]] = {}
+                for index, aisle in enumerate(aisle_order):
+                    if index < break_index:
+                        allowed[aisle] = s_shape_allowed_pairs(by_aisle[aisle])
+                    elif index > break_index:
+                        allowed[aisle] = largest_gap_allowed_pairs(by_aisle[aisle])
+                    else:
+                        allowed[aisle] = combined_allowed_pairs(by_aisle[aisle])
+                allowed_sets.append(allowed)
+        elif policy == "combined_plus":
+            break_candidates = _build_combined_break_candidates(aisle_order)
+            if not break_candidates:
+                allowed_sets.append({aisle: combined_allowed_pairs(by_aisle[aisle]) for aisle in aisle_order})
+            else:
+                for break_index in break_candidates:
+                    allowed: dict[int, set[tuple[str, str]]] = {}
+                    for index, aisle in enumerate(aisle_order):
+                        if index < break_index:
+                            allowed[aisle] = s_shape_allowed_pairs(by_aisle[aisle])
+                        elif index > break_index:
+                            allowed[aisle] = largest_gap_allowed_pairs(by_aisle[aisle])
+                        else:
+                            allowed[aisle] = combined_allowed_pairs(by_aisle[aisle])
+                    allowed_sets.append(allowed)
+        else:
+            raise DataError(f"Unsupported route policy '{policy}'.")
+
+        for allowed_pairs_by_aisle in allowed_sets:
+            built = _reconstruct_dp_route(aisle_order, by_aisle, allowed_pairs_by_aisle)
+            if built is None:
+                continue
+            route, cost = built
+            route_key = tuple(route)
+            if cost + 1e-9 < best_cost:
+                best_cost = cost
+                best_route = route_key
+
+    if best_route is None:
+        return None
+    return best_route, best_cost
+
+
+@lru_cache(maxsize=20000)
+def _best_of_4_route_cached(nodes_key: tuple[Node2D, ...]) -> tuple[tuple[Node2D, ...], float, str]:
+    if not nodes_key:
+        return tuple(), 0.0, "empty"
+
+    best_route: tuple[Node2D, ...] = tuple()
+    best_cost = math.inf
+    best_policy = "s_shape"
+    for policy in ("s_shape", "largest_gap", "combined", "combined_plus"):
+        built = route_with_policy(nodes_key, policy=policy)
+        if built is None:
+            continue
+        route, cost = built
+        if cost + 1e-9 < best_cost:
+            best_route = route
+            best_cost = cost
+            best_policy = policy
+
+    if not best_route and nodes_key:
+        fallback_route, fallback_cost = optimize_route(nodes_key)
+        return tuple(fallback_route), fallback_cost, "regret_insertion_fallback"
+    return best_route, best_cost, best_policy
+
+
+def estimate_route_with_best_of_4(nodes: Iterable[Node2D]) -> tuple[tuple[Node2D, ...], float, str]:
+    nodes_key = tuple(sorted(set(nodes)))
+    return _best_of_4_route_cached(nodes_key)
 
 
 def insertion_options(route: Sequence[Node2D], node: Node2D) -> list[tuple[float, int]]:

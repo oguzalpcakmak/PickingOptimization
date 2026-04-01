@@ -61,6 +61,7 @@ def solve(
     distance_weight: float = 1.0,
     thm_weight: float = 15.0,
     floor_weight: float = 30.0,
+    construction_route_estimator: str = "insertion",
 ):
     total_start = time.perf_counter()
     phase_times: dict[str, float] = {}
@@ -85,7 +86,11 @@ def solve(
     print(f"  Priority queue built for {len(article_order)} articles ({phase_times['article_ordering']:.2f}s)")
 
     step_start = time.perf_counter()
-    state = ConstructionState(loc_lookup, weights)
+    state = ConstructionState(
+        loc_lookup,
+        weights,
+        route_estimator=construction_route_estimator,
+    )
     for index, article in enumerate(article_order, start=1):
         remaining = demands[article]
         while remaining > 0:
@@ -113,6 +118,7 @@ def solve(
         notes={
             "article_order": "static regret priority",
             "allocation_rule": "lowest marginal cost per picked unit",
+            "construction_route_estimator": construction_route_estimator,
         },
         route_hints_by_floor=dict(state.route_by_floor),
     )
@@ -134,6 +140,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--distance-weight", type=float, default=1.0)
     parser.add_argument("--thm-weight", type=float, default=15.0)
     parser.add_argument("--floor-weight", type=float, default=30.0)
+    parser.add_argument(
+        "--construction-route-estimator",
+        choices=("best_of_4", "insertion"),
+        default="insertion",
+        help="Floor-route scorer used during construction. 'best_of_4' is experimental.",
+    )
     parser.add_argument(
         "--output",
         "--pick-data-output",
@@ -163,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         distance_weight=args.distance_weight,
         thm_weight=args.thm_weight,
         floor_weight=args.floor_weight,
+        construction_route_estimator=args.construction_route_estimator,
     )
     print_report(solution)
 
