@@ -183,3 +183,9 @@ cython_debug/
 gurobi.lic
 api-key.txt
 node_modules/
+.openclaude-profile.json
+10min.txt
+APPROACHES_1.md
+APPROACHES_2.md
+APPROACHES_3.md
+APPROACHES_3_backend/

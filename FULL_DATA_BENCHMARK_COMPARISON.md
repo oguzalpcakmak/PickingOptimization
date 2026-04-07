@@ -31,30 +31,75 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 
 | Solver / Plan | Comparable Objective | Native Reported Objective | Distance | Floors | THMs | Pick Rows | Visited Nodes | Solve Time | Status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Large Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 6.92s | Completed |
+| Adaptive Large Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 6.93s | Completed |
+| Variable Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 7.09s | Completed |
+| Fast THM-first + S-shape routing | 37135.12 | 37135.12 | 10270.12 | 6 | 1779 | 2841 | 1140 | 1.43s | Completed |
 | Route-aware regret greedy | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 9.18s | Completed |
 | GRASP multi-start | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 18.61s | Completed |
 | Existing Betul heuristic | 44863.08 | 173189.96 | 9388.08 | 6 | 2353 | 2867 | 1178 | 1.86s | Completed |
 | Exact Gurobi, 120s limit | 93662.44 | 93662.44 | 52412.44 | 6 | 2738 | 3156 | 915 | 120.09s | Time-limited incumbent |
 | THM-min + RR-style aisle DP | n/a | n/a | n/a | n/a | n/a | n/a | n/a | ~61s before stop | DNF on full data |
+| THM-min + S-shape routing | n/a | n/a | n/a | n/a | n/a | n/a | n/a | not run | Not benchmarked yet |
 
-## Ranking
+## Additional 120-Second Neighborhood Search Runs
 
-1. Route-aware regret greedy: `41079.08`
-2. GRASP multi-start: `41079.08`
-3. Existing Betul heuristic: `44863.08`
-4. Exact Gurobi, 120-second incumbent: `93662.44`
-5. THM-min + RR-style aisle DP: no completed full-data result
+These reruns use the same full-data instance and the same `1 / 15 / 30` weights, but they give `lns_heuristic.py` and `alns_heuristic.py` a much larger search budget than the main table above.
+
+| Solver / Plan | Comparable Objective | Native Reported Objective | Distance | Floors | THMs | Pick Rows | Visited Nodes | Solve Time | Delta vs 5s run |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Large Neighborhood Search, 120s | 36645.88 | 36645.88 | 9735.88 | 6 | 1782 | 2837 | 1115 | 121.89s | -29.00 |
+| Adaptive Large Neighborhood Search, 120s | 36605.04 | 36605.04 | 9680.04 | 6 | 1783 | 2836 | 1110 | 121.95s | -69.84 |
+
+## Additional 10-Minute Neighborhood Search Runs
+
+These benchmark runs were launched with `--time-limit 600` on the same full-data instance and the same `1 / 15 / 30` weights. `vns_heuristic.py` terminated early after exhausting its current neighborhood ladder, while `lns_heuristic.py` and `alns_heuristic.py` used essentially the full budget.
+
+| Solver / Plan | Comparable Objective | Native Reported Objective | Distance | Floors | THMs | Pick Rows | Visited Nodes | Solve Time | Delta vs 5s run |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Variable Neighborhood Search, 10min budget | 36645.88 | 36645.88 | 9735.88 | 6 | 1782 | 2837 | 1115 | 164.87s | -29.00 |
+| Large Neighborhood Search, 10min budget | 36575.52 | 36575.52 | 9605.52 | 6 | 1786 | 2837 | 1105 | 601.87s | -99.36 |
+| Adaptive Large Neighborhood Search, 10min budget | 36520.88 | 36520.88 | 9550.88 | 6 | 1786 | 2837 | 1100 | 602.28s | -154.00 |
+
+## Ranking (Main Budget Runs)
+
+1. Large / Adaptive Large / Variable Neighborhood Search: `36674.88`
+2. Fast THM-first + S-shape routing: `37135.12`
+3. Route-aware regret greedy: `41079.08`
+4. GRASP multi-start: `41079.08`
+5. Existing Betul heuristic: `44863.08`
+6. Exact Gurobi, 120-second incumbent: `93662.44`
+7. THM-min + RR-style aisle DP: no completed full-data result
+8. THM-min + S-shape routing: not benchmarked yet
 
 ## Notes
 
+- Including the longer reruns, the current best completed full-data result in this repo is now the `10min` ALNS run at `36520.88`.
+- The `10min` LNS rerun also improved materially, reaching `36575.52`.
+- The `10min` VNS run finished early at `164.87s` and stopped at `36645.88`, which suggests the current VNS search structure saturates before the wall-clock budget on full data.
+- The `120s` LNS rerun also improved over the earlier `5s` neighborhood-search plateau, reaching `36645.88`.
+- In the main `5s` budget runs, the new large-neighborhood family and VNS were tied at `36674.88` under the common `1 / 15 / 30` objective. In all three of those recorded runs, the fast THM-first seed improved from `36793.40` to `36674.88`, mainly through the shared local THM-closing moves in the seed-improvement phase.
+- The fast THM-first + S-shape heuristic remains a very strong constructive baseline and is still the fastest among the stronger exact-style heuristics in this comparison.
 - On the full instance, `grasp_heuristic.py` matched the deterministic regret solution exactly. With its current default settings, the first elite deterministic iteration already consumes most of the search budget, so only `2` iterations completed.
 - `betul-heuristic.py` remains the fastest completed solver in wall-clock time, but it is clearly weaker than the route-aware regret / GRASP solution under the common objective.
+- For VNS, the CLI `--time-limit` applies to the improvement phase. Total wall-clock also includes seed construction and the final route rebuild, which is why the `5s` benchmark run finished in about `7.09s` overall.
+- For both `lns_heuristic.py` and `alns_heuristic.py`, the recorded `5s` full-data budget was effectively consumed by seed construction plus seed local descent. As a result, both runs finished with `iterations_run = 0` and simply reproduced the same post-seed solution as VNS.
+- The `120s` LNS/ALNS reruns confirm that the biggest improvement opportunity is still in the shared seed local descent. Even with the larger budget, the outer loops stayed very short:
+  - `LNS`: `iterations_run = 2`, no accepted post-seed destroy/repair improvement
+  - `ALNS`: `iterations_run = 4`, one accepted improvement at iteration `3` via `route_cluster + balanced`
+- The `10min` reruns show a clearer separation between the neighborhood-search methods:
+  - `ALNS`: `68` iterations, `7` best-so-far improvements, strongest final result
+  - `LNS`: `41` iterations, `5` best-so-far improvements, clearly better than the `120s` rerun
+  - `VNS`: only `4` outer iterations before termination, despite the `600s` budget
+- In the `10min` runs, both `LNS` and `ALNS` accepted a small THM increase from `1782` to `1786` in exchange for a much larger distance reduction, which appears to be favorable under the current `1 / 15 / 30` weighting.
+- In the long-budget runs, most of the extra wall-clock was spent before the reported `lns_search` / `alns_search` phase, which means the current `phase_times` output understates how expensive the seed local descent has become on full data.
 - The exact model required `--max-route-arcs 1000000` because the full instance creates `979,730` routing arcs, which exceeds the code's default safety cap of `250,000`.
 - The exact run is not a fair indication of the model's ultimate solution quality. It stopped after `120.09` seconds with a very large remaining gap:
   - incumbent objective `93662.44`
   - best bound `30252.09`
   - relative gap `67.7009%`
 - The THM-first + RR-style solver did not scale to the full instance in its current form. The run was stopped after about `61` seconds without producing a completed output, so it is marked as `DNF`.
+- The THM-min + S-shape variant shares the same Phase 1 THM search as the RR-style solver. It has been added as a solver variant, but it has not yet been benchmarked on the full instance in this report.
 - All completed heuristics were run with the same weights `1 / 15 / 30`. The exact run was also forced to those weights explicitly because `gurobi_pick_model.py` has different CLI defaults.
 
 ## Source Files
@@ -62,13 +107,37 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 - Existing heuristic implementation: [betul-heuristic.py](./betul-heuristic.py)
 - New regret heuristic: [regret_based_heuristic.py](./regret_based_heuristic.py)
 - New GRASP heuristic: [grasp_heuristic.py](./grasp_heuristic.py)
+- New VNS heuristic: [vns_heuristic.py](./vns_heuristic.py)
+- New LNS heuristic: [lns_heuristic.py](./lns_heuristic.py)
+- New ALNS heuristic: [alns_heuristic.py](./alns_heuristic.py)
+- Fast THM-first + S-shape heuristic: [fast_thm_first_s_shape_heuristic.py](./fast_thm_first_s_shape_heuristic.py)
 - THM-min + RR-style heuristic: [thm_min_rr_heuristic.py](./thm_min_rr_heuristic.py)
+- THM-min + S-shape heuristic: [thm_min_s_shape_heuristic.py](./thm_min_s_shape_heuristic.py)
 - Shared heuristic utilities: [heuristic_common.py](./heuristic_common.py)
+- Shared neighborhood-search utilities: [neighborhood_search_common.py](./neighborhood_search_common.py)
 
 ## Generated Run Artifacts
 
 - Betul pick list: [benchmark_outputs/full_data/betul_full_pick.csv](./benchmark_outputs/full_data/betul_full_pick.csv)
 - Betul alternatives: [benchmark_outputs/full_data/betul_full_alt.csv](./benchmark_outputs/full_data/betul_full_alt.csv)
+- Fast THM-first + S-shape pick list: [benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv](./benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv)
+- Fast THM-first + S-shape alternatives: [benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv](./benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv)
+- VNS pick list: [benchmark_outputs/full_data/vns_full_pick.csv](./benchmark_outputs/full_data/vns_full_pick.csv)
+- VNS alternatives: [benchmark_outputs/full_data/vns_full_alt.csv](./benchmark_outputs/full_data/vns_full_alt.csv)
+- LNS pick list: [benchmark_outputs/full_data/lns_full_pick.csv](./benchmark_outputs/full_data/lns_full_pick.csv)
+- LNS alternatives: [benchmark_outputs/full_data/lns_full_alt.csv](./benchmark_outputs/full_data/lns_full_alt.csv)
+- ALNS pick list: [benchmark_outputs/full_data/alns_full_pick.csv](./benchmark_outputs/full_data/alns_full_pick.csv)
+- ALNS alternatives: [benchmark_outputs/full_data/alns_full_alt.csv](./benchmark_outputs/full_data/alns_full_alt.csv)
+- LNS 120s pick list: [benchmark_outputs/full_data/lns_full_120_pick.csv](./benchmark_outputs/full_data/lns_full_120_pick.csv)
+- LNS 120s alternatives: [benchmark_outputs/full_data/lns_full_120_alt.csv](./benchmark_outputs/full_data/lns_full_120_alt.csv)
+- ALNS 120s pick list: [benchmark_outputs/full_data/alns_full_120_pick.csv](./benchmark_outputs/full_data/alns_full_120_pick.csv)
+- ALNS 120s alternatives: [benchmark_outputs/full_data/alns_full_120_alt.csv](./benchmark_outputs/full_data/alns_full_120_alt.csv)
+- VNS 10min pick list: [benchmark_outputs/full_data_t10/vns_full_t10_pick.csv](./benchmark_outputs/full_data_t10/vns_full_t10_pick.csv)
+- VNS 10min alternatives: [benchmark_outputs/full_data_t10/vns_full_t10_alt.csv](./benchmark_outputs/full_data_t10/vns_full_t10_alt.csv)
+- LNS 10min pick list: [benchmark_outputs/full_data_t10/lns_full_t10_pick.csv](./benchmark_outputs/full_data_t10/lns_full_t10_pick.csv)
+- LNS 10min alternatives: [benchmark_outputs/full_data_t10/lns_full_t10_alt.csv](./benchmark_outputs/full_data_t10/lns_full_t10_alt.csv)
+- ALNS 10min pick list: [benchmark_outputs/full_data_t10/alns_full_t10_pick.csv](./benchmark_outputs/full_data_t10/alns_full_t10_pick.csv)
+- ALNS 10min alternatives: [benchmark_outputs/full_data_t10/alns_full_t10_alt.csv](./benchmark_outputs/full_data_t10/alns_full_t10_alt.csv)
 - Regret pick list: [benchmark_outputs/full_data/regret_full_pick.csv](./benchmark_outputs/full_data/regret_full_pick.csv)
 - Regret alternatives: [benchmark_outputs/full_data/regret_full_alt.csv](./benchmark_outputs/full_data/regret_full_alt.csv)
 - GRASP pick list: [benchmark_outputs/full_data/grasp_full_pick.csv](./benchmark_outputs/full_data/grasp_full_pick.csv)
@@ -96,6 +165,104 @@ This matters because `betul-heuristic.py` reports a much larger native objective
   --stock StockData.csv \
   --output benchmark_outputs/full_data/regret_full_pick.csv \
   --alternative-locations-output benchmark_outputs/full_data/regret_full_alt.csv
+```
+
+### Fast THM-First + S-Shape Routing
+
+```bash
+.venv/bin/python fast_thm_first_s_shape_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv
+```
+
+### Variable Neighborhood Search
+
+```bash
+.venv/bin/python vns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 5 \
+  --output benchmark_outputs/full_data/vns_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/vns_full_alt.csv
+```
+
+### Large Neighborhood Search
+
+```bash
+.venv/bin/python lns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 5 \
+  --output benchmark_outputs/full_data/lns_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/lns_full_alt.csv
+```
+
+### Adaptive Large Neighborhood Search
+
+```bash
+.venv/bin/python alns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 5 \
+  --output benchmark_outputs/full_data/alns_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/alns_full_alt.csv
+```
+
+### Large Neighborhood Search, 120-Second Rerun
+
+```bash
+.venv/bin/python lns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 120 \
+  --output benchmark_outputs/full_data/lns_full_120_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/lns_full_120_alt.csv
+```
+
+### Adaptive Large Neighborhood Search, 120-Second Rerun
+
+```bash
+.venv/bin/python alns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 120 \
+  --output benchmark_outputs/full_data/alns_full_120_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/alns_full_120_alt.csv
+```
+
+### Variable Neighborhood Search, 10-Minute Benchmark
+
+```bash
+.venv/bin/python vns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 600 \
+  --output benchmark_outputs/full_data_t10/vns_full_t10_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data_t10/vns_full_t10_alt.csv
+```
+
+### Large Neighborhood Search, 10-Minute Benchmark
+
+```bash
+.venv/bin/python lns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 600 \
+  --output benchmark_outputs/full_data_t10/lns_full_t10_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data_t10/lns_full_t10_alt.csv
+```
+
+### Adaptive Large Neighborhood Search, 10-Minute Benchmark
+
+```bash
+.venv/bin/python alns_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --time-limit 600 \
+  --output benchmark_outputs/full_data_t10/alns_full_t10_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data_t10/alns_full_t10_alt.csv
 ```
 
 ### GRASP Multi-Start
@@ -135,3 +302,48 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 ```
 
 This last run did not finish cleanly on the full instance and therefore did not produce benchmarkable output files.
+
+### THM-Min + S-Shape Routing
+
+```bash
+.venv/bin/python thm_min_s_shape_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output benchmark_outputs/full_data/thm_sshape_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/thm_sshape_full_alt.csv
+```
+
+This variant has been added to the report for completeness, but it has not yet been benchmarked on the full instance.
+
+## Audit Of Existing Pick-Order File
+
+The file [Grup_Toplama_Verisi_With_PickOrder.csv](./Grup_Toplama_Verisi_With_PickOrder.csv) was also audited separately.
+
+Using the correct route grouping key `(PICKER_CODE, PICKCAR_THM)`:
+
+- Total recorded distance in file: `18387.56 m`
+- Total recorded distance by summing final `TOTAL_DIST` per route: `18387.56 m`
+- Total recorded distance by summing all `STEP_DIST`: `18387.56 m`
+- Route group count: `47`
+- Global unique opened THMs (`PICKED_THM`): `2903`
+- Summed opened THMs across route groups: `2917`
+
+### Audit Result
+
+- The file is internally consistent.
+- `TOTAL_DIST` and `STEP_DIST` agree exactly.
+- Same-node repeat rows correctly use `STEP_DIST = 0`.
+- All same-floor movement rows match the shared warehouse geometry exactly.
+- The only mismatches come from cross-floor transitions.
+
+### Cross-Floor Difference
+
+Under the shared exact-style warehouse metric used elsewhere in this repo:
+
+- Same-floor recorded distance: `16982.04 m`
+- Same-floor recalculated distance: `16982.04 m`
+- Cross-floor recorded distance: `1405.52 m`
+- Cross-floor recalculated distance: `2501.02 m`
+- Cross-floor mismatch count: `19`
+
+So the file appears to use a simplified cross-floor transition rule. It is accurate for same-floor routing, but it underestimates cross-floor travel by `1095.50 m` relative to the repo's exact-model geometry.

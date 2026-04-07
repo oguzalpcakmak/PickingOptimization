@@ -1,6 +1,6 @@
 # 25-Item / 3-Floor Benchmark Comparison
 
-This report compares the saved repository benchmark plan, the exact Gurobi run, the existing heuristic, and the two new heuristic alternatives on the same 25-item / 3-floor configuration.
+This report compares the saved repository benchmark plan, the exact Gurobi run, the existing heuristic, and the new heuristic alternatives on the same 25-item / 3-floor configuration.
 
 ## Benchmark Setup
 
@@ -24,27 +24,39 @@ This matters because the older `betul-heuristic.py` reports a larger native dist
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Saved repo reference | 491.10 | n/a | 466.10 | 1 | 24 | 25 | 24 | n/a |
 | Exact Gurobi, 30s limit | 508.72 | 508.72 | 482.72 | 2 | 24 | 26 | 21 | 30.0s |
+| Variable Neighborhood Search | 519.52 | 519.52 | 494.52 | 2 | 23 | 26 | 17 | 1.24s |
+| Large Neighborhood Search | 519.52 | 519.52 | 494.52 | 2 | 23 | 26 | 17 | 2.15s |
+| Adaptive Large Neighborhood Search | 519.52 | 519.52 | 494.52 | 2 | 23 | 26 | 17 | 2.18s |
 | GRASP multi-start | 520.50 | 520.50 | 495.50 | 1 | 24 | 25 | 23 | 1.43s |
 | Route-aware regret greedy | 569.84 | 569.84 | 543.84 | 2 | 24 | 26 | 23 | 0.16s |
+| Fast THM-first + S-shape routing | 675.52 | 675.52 | 650.52 | 2 | 23 | 26 | 19 | 0.15s |
 | THM-min + RR-style aisle DP | 664.72 | 664.72 | 639.72 | 2 | 23 | 26 | 19 | 10.15s |
+| THM-min + S-shape routing | 675.52 | 675.52 | 650.52 | 2 | 23 | 26 | 19 | 10.15s |
 | Existing Betul heuristic | 781.60 | 4077.96 | 747.60 | 2 | 32 | 33 | 32 | 0.14s |
 
 ## Ranking
 
 1. Saved repo reference: `491.10`
 2. Exact Gurobi, 30-second incumbent: `508.72`
-3. GRASP multi-start: `520.50`
-4. Route-aware regret greedy: `569.84`
-5. THM-min + RR-style aisle DP: `664.72`
-6. Existing Betul heuristic: `781.60`
+3. Variable / Large / Adaptive Large Neighborhood Search: `519.52`
+4. GRASP multi-start: `520.50`
+5. Route-aware regret greedy: `569.84`
+6. THM-min + RR-style aisle DP: `664.72`
+7. Fast THM-first + S-shape routing: `675.52`
+8. THM-min + S-shape routing: `675.52`
+9. Existing Betul heuristic: `781.60`
 
 ## Notes
 
 - The saved repository benchmark plan is currently the strongest solution in this comparison.
 - The exact Gurobi run was time-limited to 30 seconds and stopped with a remaining optimality gap, so `508.72` is a best incumbent, not a proven optimum.
-- The new GRASP heuristic is the strongest heuristic on this benchmark and comes fairly close to the saved reference while staying fast.
+- The new VNS, LNS, and ALNS heuristics are tied as the strongest heuristics on this benchmark. All three reach the same `519.52` solution with `23` THMs after the shared seed-improvement phase.
+- On this 25-item case, `lns_heuristic.py` and `alns_heuristic.py` did enter their neighborhood-search loop (`2` and `3` iterations respectively), but neither found an improvement beyond the post-seed solution.
+- The new GRASP heuristic remains very competitive on this benchmark and comes fairly close to the saved reference while staying fast.
 - The new deterministic regret heuristic is much stronger than the existing Betul heuristic and remains very fast.
+- The fast THM-first + S-shape variant reaches the same benchmark solution as the exact-style THM-min + S-shape variant on this case, but in about `0.15s` instead of `10.15s`.
 - The THM-min + RR-style solver does exactly what it is designed to do: it pushes THM count down first. On this benchmark it found a 23-THM incumbent, but that came with a much longer route, so its total objective is worse than the GRASP and regret heuristics.
+- The THM-min + S-shape solver reaches the same 23-THM incumbent as the RR-style variant on this run, but its serpentine route is slightly longer, so it ranks just below the RR-style version.
 - The THM-min phase was not proven optimal within the 10-second search budget on this run, so the 23-THM solution is the best incumbent found, not a proof that 23 is the true minimum.
 - The existing Betul heuristic's own printed objective is not directly comparable to the exact model because its total distance accounting is different. The `Comparable Objective` column corrects that by rescoring its exported route.
 
@@ -55,8 +67,14 @@ This matters because the older `betul-heuristic.py` reports a larger native dist
 - Existing heuristic implementation: [../betul-heuristic.py](../betul-heuristic.py)
 - New regret heuristic: [../regret_based_heuristic.py](../regret_based_heuristic.py)
 - New GRASP heuristic: [../grasp_heuristic.py](../grasp_heuristic.py)
+- New VNS heuristic: [../vns_heuristic.py](../vns_heuristic.py)
+- New LNS heuristic: [../lns_heuristic.py](../lns_heuristic.py)
+- New ALNS heuristic: [../alns_heuristic.py](../alns_heuristic.py)
+- New fast THM-first + S-shape heuristic: [../fast_thm_first_s_shape_heuristic.py](../fast_thm_first_s_shape_heuristic.py)
 - New THM-min + RR-style heuristic: [../thm_min_rr_heuristic.py](../thm_min_rr_heuristic.py)
+- New THM-min + S-shape heuristic: [../thm_min_s_shape_heuristic.py](../thm_min_s_shape_heuristic.py)
 - Shared heuristic utilities: [../heuristic_common.py](../heuristic_common.py)
+- Shared neighborhood-search utilities: [../neighborhood_search_common.py](../neighborhood_search_common.py)
 
 ## Generated Run Artifacts
 
@@ -68,8 +86,18 @@ This matters because the older `betul-heuristic.py` reports a larger native dist
 - Regret heuristic alternatives: [/tmp/regret_25_3floor_alt.csv](/tmp/regret_25_3floor_alt.csv)
 - GRASP heuristic pick list: [/tmp/grasp_25_3floor.csv](/tmp/grasp_25_3floor.csv)
 - GRASP heuristic alternatives: [/tmp/grasp_25_3floor_alt.csv](/tmp/grasp_25_3floor_alt.csv)
+- VNS heuristic pick list: [../benchmark_outputs/25item3floor/vns_25_pick.csv](../benchmark_outputs/25item3floor/vns_25_pick.csv)
+- VNS heuristic alternatives: [../benchmark_outputs/25item3floor/vns_25_alt.csv](../benchmark_outputs/25item3floor/vns_25_alt.csv)
+- LNS heuristic pick list: [../benchmark_outputs/25item3floor/lns_25_pick.csv](../benchmark_outputs/25item3floor/lns_25_pick.csv)
+- LNS heuristic alternatives: [../benchmark_outputs/25item3floor/lns_25_alt.csv](../benchmark_outputs/25item3floor/lns_25_alt.csv)
+- ALNS heuristic pick list: [../benchmark_outputs/25item3floor/alns_25_pick.csv](../benchmark_outputs/25item3floor/alns_25_pick.csv)
+- ALNS heuristic alternatives: [../benchmark_outputs/25item3floor/alns_25_alt.csv](../benchmark_outputs/25item3floor/alns_25_alt.csv)
+- Fast THM-first + S-shape heuristic pick list: [/tmp/fast_thm_sshape_25_3floor.csv](/tmp/fast_thm_sshape_25_3floor.csv)
+- Fast THM-first + S-shape heuristic alternatives: [/tmp/fast_thm_sshape_25_3floor_alt.csv](/tmp/fast_thm_sshape_25_3floor_alt.csv)
 - THM-min + RR-style heuristic pick list: [/tmp/thm_rr_25_3floor.csv](/tmp/thm_rr_25_3floor.csv)
 - THM-min + RR-style heuristic alternatives: [/tmp/thm_rr_25_3floor_alt.csv](/tmp/thm_rr_25_3floor_alt.csv)
+- THM-min + S-shape heuristic pick list: [/tmp/thm_sshape_25_3floor.csv](/tmp/thm_sshape_25_3floor.csv)
+- THM-min + S-shape heuristic alternatives: [/tmp/thm_sshape_25_3floor_alt.csv](/tmp/thm_sshape_25_3floor_alt.csv)
 
 ## Commands Used
 
@@ -137,6 +165,56 @@ This matters because the older `betul-heuristic.py` reports a larger native dist
   --alternative-locations-output /tmp/grasp_25_3floor_alt.csv
 ```
 
+### Variable Neighborhood Search
+
+```bash
+.venv/bin/python vns_heuristic.py \
+  --orders 25item3floor/PickOrder.csv \
+  --stock 25item3floor/StockData.csv \
+  --floors MZN1,MZN2,MZN3 \
+  --articles 567,577,606,609,699,788,791,866,977,993,997,999,1019,1020,1030,1051,1055,1061,1066,1068,1087,1088,1093,1118,1122 \
+  --distance-weight 1 \
+  --thm-weight 1 \
+  --floor-weight 1 \
+  --time-limit 1 \
+  --output benchmark_outputs/25item3floor/vns_25_pick.csv \
+  --alternative-locations-output benchmark_outputs/25item3floor/vns_25_alt.csv
+```
+
+### Large Neighborhood Search
+
+```bash
+.venv/bin/python lns_heuristic.py \
+  --orders 25item3floor/PickOrder.csv \
+  --stock 25item3floor/StockData.csv \
+  --floors MZN1,MZN2,MZN3 \
+  --articles 567,577,606,609,699,788,791,866,977,993,997,999,1019,1020,1030,1051,1055,1061,1066,1068,1087,1088,1093,1118,1122 \
+  --distance-weight 1 \
+  --thm-weight 1 \
+  --floor-weight 1 \
+  --time-limit 2 \
+  --iterations 40 \
+  --output benchmark_outputs/25item3floor/lns_25_pick.csv \
+  --alternative-locations-output benchmark_outputs/25item3floor/lns_25_alt.csv
+```
+
+### Adaptive Large Neighborhood Search
+
+```bash
+.venv/bin/python alns_heuristic.py \
+  --orders 25item3floor/PickOrder.csv \
+  --stock 25item3floor/StockData.csv \
+  --floors MZN1,MZN2,MZN3 \
+  --articles 567,577,606,609,699,788,791,866,977,993,997,999,1019,1020,1030,1051,1055,1061,1066,1068,1087,1088,1093,1118,1122 \
+  --distance-weight 1 \
+  --thm-weight 1 \
+  --floor-weight 1 \
+  --time-limit 2 \
+  --iterations 50 \
+  --output benchmark_outputs/25item3floor/alns_25_pick.csv \
+  --alternative-locations-output benchmark_outputs/25item3floor/alns_25_alt.csv
+```
+
 ### THM-Min + RR-Style Aisle DP
 
 ```bash
@@ -151,4 +229,37 @@ This matters because the older `betul-heuristic.py` reports a larger native dist
   --thm-search-time-limit 10 \
   --output /tmp/thm_rr_25_3floor.csv \
   --alternative-locations-output /tmp/thm_rr_25_3floor_alt.csv
+```
+
+### Fast THM-First + S-Shape Routing
+
+```bash
+.venv/bin/python fast_thm_first_s_shape_heuristic.py \
+  --orders 25item3floor/PickOrder.csv \
+  --stock 25item3floor/StockData.csv \
+  --floors MZN1,MZN2,MZN3 \
+  --articles 567,577,606,609,699,788,791,866,977,993,997,999,1019,1020,1030,1051,1055,1061,1066,1068,1087,1088,1093,1118,1122 \
+  --distance-weight 1 \
+  --thm-weight 1 \
+  --floor-weight 1 \
+  --iterations 12 \
+  --time-limit 5 \
+  --output /tmp/fast_thm_sshape_25_3floor.csv \
+  --alternative-locations-output /tmp/fast_thm_sshape_25_3floor_alt.csv
+```
+
+### THM-Min + S-Shape Routing
+
+```bash
+.venv/bin/python thm_min_s_shape_heuristic.py \
+  --orders 25item3floor/PickOrder.csv \
+  --stock 25item3floor/StockData.csv \
+  --floors MZN1,MZN2,MZN3 \
+  --articles 567,577,606,609,699,788,791,866,977,993,997,999,1019,1020,1030,1051,1055,1061,1066,1068,1087,1088,1093,1118,1122 \
+  --distance-weight 1 \
+  --thm-weight 1 \
+  --floor-weight 1 \
+  --thm-search-time-limit 10 \
+  --output /tmp/thm_sshape_25_3floor.csv \
+  --alternative-locations-output /tmp/thm_sshape_25_3floor_alt.csv
 ```
