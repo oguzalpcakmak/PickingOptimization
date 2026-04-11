@@ -38,6 +38,7 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 | Route-aware regret greedy | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 9.18s | Completed |
 | GRASP multi-start | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 18.61s | Completed |
 | Existing Betul heuristic | 44863.08 | 173189.96 | 9388.08 | 6 | 2353 | 2867 | 1178 | 1.86s | Completed |
+| Historical actual operation (recorded CSV) | 63208.06 | n/a | 19483.06 | 6 | 2903 | 6255 | 1649 | n/a | Historical baseline |
 | Exact Gurobi, 120s limit | 93662.44 | 93662.44 | 52412.44 | 6 | 2738 | 3156 | 915 | 120.09s | Time-limited incumbent |
 | THM-min + RR-style aisle DP | n/a | n/a | n/a | n/a | n/a | n/a | n/a | ~61s before stop | DNF on full data |
 | THM-min + S-shape routing | n/a | n/a | n/a | n/a | n/a | n/a | n/a | not run | Not benchmarked yet |
@@ -68,15 +69,17 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 3. Route-aware regret greedy: `41079.08`
 4. GRASP multi-start: `41079.08`
 5. Existing Betul heuristic: `44863.08`
-6. Exact Gurobi, 120-second incumbent: `93662.44`
-7. THM-min + RR-style aisle DP: no completed full-data result
-8. THM-min + S-shape routing: not benchmarked yet
+6. Historical actual operation baseline: `63208.06`
+7. Exact Gurobi, 120-second incumbent: `93662.44`
+8. THM-min + RR-style aisle DP: no completed full-data result
+9. THM-min + S-shape routing: not benchmarked yet
 
 ## Notes
 
 - Including the longer reruns, the current best completed full-data result in this repo is now the `10min` ALNS run at `36520.88`.
 - The `10min` LNS rerun also improved materially, reaching `36575.52`.
 - The `10min` VNS run finished early at `164.87s` and stopped at `36645.88`, which suggests the current VNS search structure saturates before the wall-clock budget on full data.
+- The historical actual-operation baseline comes from `Grup_Toplama_Verisi_With_PickOrder.csv`. For consistency with the benchmark table, its comparable distance is shown as `19483.06 m` using the repo's exact-style geometry. The raw file itself records `18387.56 m`, but it underestimates cross-floor travel by `1095.50 m`.
 - The `120s` LNS rerun also improved over the earlier `5s` neighborhood-search plateau, reaching `36645.88`.
 - In the main `5s` budget runs, the new large-neighborhood family and VNS were tied at `36674.88` under the common `1 / 15 / 30` objective. In all three of those recorded runs, the fast THM-first seed improved from `36793.40` to `36674.88`, mainly through the shared local THM-closing moves in the seed-improvement phase.
 - The fast THM-first + S-shape heuristic remains a very strong constructive baseline and is still the fastest among the stronger exact-style heuristics in this comparison.
@@ -115,6 +118,7 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - THM-min + S-shape heuristic: [thm_min_s_shape_heuristic.py](./thm_min_s_shape_heuristic.py)
 - Shared heuristic utilities: [heuristic_common.py](./heuristic_common.py)
 - Shared neighborhood-search utilities: [neighborhood_search_common.py](./neighborhood_search_common.py)
+- Historical operation baseline source: [Grup_Toplama_Verisi_With_PickOrder.csv](./Grup_Toplama_Verisi_With_PickOrder.csv)
 
 ## Generated Run Artifacts
 
