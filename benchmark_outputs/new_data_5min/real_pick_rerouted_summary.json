@@ -1,0 +1,11 @@
+{
+  "objective": 3514.04,
+  "distance": 1654.04,
+  "floors": 4,
+  "thms": 116,
+  "pick_rows": 196,
+  "visited_nodes": 74,
+  "solve_time": 0.0309,
+  "pick_out": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_5min/real_pick_rerouted_pick.csv",
+  "alt_out": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_5min/real_pick_rerouted_alt.csv"
+}

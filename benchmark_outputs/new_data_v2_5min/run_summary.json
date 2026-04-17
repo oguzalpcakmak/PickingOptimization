@@ -1,0 +1,218 @@
+[
+  {
+    "name": "betul",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "betul-heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/betul_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/betul_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/betul.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 0.1276
+  },
+  {
+    "name": "regret",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "regret_based_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/regret_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/regret_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/regret.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 0.1279
+  },
+  {
+    "name": "grasp",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "grasp_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--iterations",
+      "10000",
+      "--time-limit",
+      "300",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/grasp_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/grasp_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/grasp.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.1114
+  },
+  {
+    "name": "grasp_no2opt",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "grasp_no_two_opt_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--iterations",
+      "10000",
+      "--time-limit",
+      "300",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/grasp_no2opt_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/grasp_no2opt_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/grasp_no2opt.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.1667
+  },
+  {
+    "name": "vns",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "vns_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--time-limit",
+      "300",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/vns_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/vns_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/vns.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 3.8915
+  },
+  {
+    "name": "lns",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "lns_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--time-limit",
+      "300",
+      "--iterations",
+      "10000",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/lns_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/lns_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/lns.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.0972
+  },
+  {
+    "name": "alns",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "alns_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--time-limit",
+      "300",
+      "--iterations",
+      "10000",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/alns_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/alns_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/alns.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.1111
+  },
+  {
+    "name": "fast_thm",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "fast_thm_first_s_shape_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--time-limit",
+      "300",
+      "--iterations",
+      "10000",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/fast_thm_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/fast_thm_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/fast_thm.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 21.1035
+  },
+  {
+    "name": "thm_rr",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "thm_min_rr_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--thm-search-time-limit",
+      "300",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/thm_rr_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/thm_rr_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/thm_rr.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.1591
+  },
+  {
+    "name": "thm_sshape",
+    "cmd": [
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/.venv/bin/python",
+      "thm_min_s_shape_heuristic.py",
+      "--orders",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/NEW_DATA/OrderData.csv",
+      "--stock",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/normalized_stock.csv",
+      "--thm-search-time-limit",
+      "300",
+      "--output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/thm_sshape_pick.csv",
+      "--alternative-locations-output",
+      "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/thm_sshape_alt.csv"
+    ],
+    "log": "/Users/oguzalpcakmak/Documents/VSCodePlayground/PickingOptimization/benchmark_outputs/new_data_v2_5min/logs/thm_sshape.log",
+    "status": "completed",
+    "returncode": 0,
+    "elapsed_sec": 300.2306
+  }
+]
