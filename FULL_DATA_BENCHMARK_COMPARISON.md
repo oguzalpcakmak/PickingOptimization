@@ -36,6 +36,7 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 | Variable Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 7.09s | Completed |
 | Fast THM-first + S-shape routing | 37135.12 | 37135.12 | 10270.12 | 6 | 1779 | 2841 | 1140 | 1.43s | Completed |
 | Route-aware regret + LK2 routing | 40832.32 | 40832.32 | 7802.32 | 6 | 2190 | 2827 | 799 | 7.42s | Completed |
+| LK seed for 1-location articles + ascending grouped insertion + open THM shortcut | 41018.72 | 41018.72 | 8183.72 | 6 | 2177 | 2823 | 810 | 206.32s | Completed |
 | Route-aware regret greedy | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 9.18s | Completed |
 | GRASP multi-start | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 18.61s | Completed |
 | Route-aware regret + imported city swap routing | 41306.64 | 41306.64 | 8276.64 | 6 | 2190 | 2827 | 799 | 7.93s | Completed |
@@ -79,30 +80,33 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 1. Large / Adaptive Large / Variable Neighborhood Search: `36674.88`
 2. Fast THM-first + S-shape routing: `37135.12`
 3. Route-aware regret + LK2 routing: `40832.32`
-4. Route-aware regret greedy: `41079.08`
-5. GRASP multi-start: `41079.08`
-6. Route-aware regret + imported city swap routing: `41306.64`
-7. GRASP multi-start (no 2-opt): `41341.44`
-8. Route-aware regret + imported simulated annealing routing: `41341.44`
-9. Route-aware regret + imported genetic routing: `41341.44`
-10. 2min strict prepass + GRASP residual (no 2-opt): `41471.56`
-11. Pure strict grouped cheapest insertion (no cap): `41546.56`
-12. Strict descending grouped insertion + open THM shortcut (no cap): `43801.56`
-13. GTSP Genetic Algorithm (cap 4): `43851.20`
-14. GTSP Tabu Search (cap 4): `43973.68`
-15. GTSP Ant Colony (cap 4): `44071.56`
-16. GTSP Simulated Annealing (cap 4): `44143.76`
-17. Existing Betul heuristic: `44863.08`
-18. Historical actual operation baseline: `63208.06`
-19. Exact Gurobi, 120-second incumbent: `93662.44`
-20. THM-min + RR-style aisle DP: no completed full-data result
-21. THM-min + S-shape routing: not benchmarked yet
+4. LK seed for 1-location articles + ascending grouped insertion + open THM shortcut: `41018.72`
+5. Route-aware regret greedy: `41079.08`
+6. GRASP multi-start: `41079.08`
+7. Route-aware regret + imported city swap routing: `41306.64`
+8. GRASP multi-start (no 2-opt): `41341.44`
+9. Route-aware regret + imported simulated annealing routing: `41341.44`
+10. Route-aware regret + imported genetic routing: `41341.44`
+11. 2min strict prepass + GRASP residual (no 2-opt): `41471.56`
+12. Pure strict grouped cheapest insertion (no cap): `41546.56`
+13. Strict descending grouped insertion + open THM shortcut (no cap): `43801.56`
+14. GTSP Genetic Algorithm (cap 4): `43851.20`
+15. GTSP Tabu Search (cap 4): `43973.68`
+16. GTSP Ant Colony (cap 4): `44071.56`
+17. GTSP Simulated Annealing (cap 4): `44143.76`
+18. Existing Betul heuristic: `44863.08`
+19. Historical actual operation baseline: `63208.06`
+20. Exact Gurobi, 120-second incumbent: `93662.44`
+21. THM-min + RR-style aisle DP: no completed full-data result
+22. THM-min + S-shape routing: not benchmarked yet
 
 ## Notes
 
 - Including the longer reruns, the current best completed full-data result in this repo is now the `10min` ALNS run at `36520.88`.
 - The imported `lk_heuristic` package was integrated as a warehouse-aware per-floor route optimizer on top of the deterministic regret allocation. Using the package's `lk2_improve` search lowered the full-data objective from `41079.08` to `40832.32`, a pure route-distance gain of `246.76` with the same `2190` THMs, `6` floors, `2827` pick rows, and `799` visited nodes.
 - That LK-routed regret run also finished faster than the old regret baseline on this instance (`7.42s` vs `9.18s`). In this integration, the imported package is improving route order only; location/THM selection still comes from the repo's regret allocator.
+- The new `LK seed for 1-location articles + ascending grouped insertion + open THM shortcut` benchmark reached `41018.72`, which is `60.36` better than plain `GRASP` and the deterministic regret baseline. It opened `13` fewer THMs (`2177` vs `2190`) while adding only `134.64 m` of distance, so the THM savings were enough to improve the shared `1 / 15 / 30` objective.
+- In that benchmark, the LK seed itself was essentially free (`0.12s` total across all floors). Almost all runtime still came from the ascending grouped insertion phase (`206.17s`), which suggests the quality gain came from handing the grouped phase a better initial route backbone for the single-location picks.
 - The imported TSP trio from `3-heuristic-algorithms-in-Python-for-Travelling-Salesman-Problem-main` was also adapted as route-only post-optimizers on top of the same regret allocation. None of those three improved the base regret route on full data.
 - Their full-data results were:
   - imported city swap: `41306.64`
@@ -157,6 +161,7 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - Existing heuristic implementation: [betul-heuristic.py](./betul-heuristic.py)
 - New regret heuristic: [regret_based_heuristic.py](./regret_based_heuristic.py)
 - LK-routed warehouse heuristic: [lk_warehouse_heuristic.py](./lk_warehouse_heuristic.py)
+- LK-seeded ascending grouped benchmark script: [lk_seed_one_loc_ascending_open_thm_benchmark.py](./lk_seed_one_loc_ascending_open_thm_benchmark.py)
 - LK full-data benchmark runner: [benchmark_lk_full_data.py](./benchmark_lk_full_data.py)
 - Imported LK core: [lk_heuristic-master/src/lk_heuristic/models/tsp.py](./lk_heuristic-master/src/lk_heuristic/models/tsp.py)
 - Imported TSP warehouse heuristic: [imported_tsp_warehouse_heuristic.py](./imported_tsp_warehouse_heuristic.py)
@@ -193,6 +198,9 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - LK benchmark summary: [benchmark_outputs/full_data_lk/run_summary.json](./benchmark_outputs/full_data_lk/run_summary.json)
 - LK-routed regret pick list: [benchmark_outputs/full_data_lk/lk_regret_full_pick.csv](./benchmark_outputs/full_data_lk/lk_regret_full_pick.csv)
 - LK-routed regret alternatives: [benchmark_outputs/full_data_lk/lk_regret_full_alt.csv](./benchmark_outputs/full_data_lk/lk_regret_full_alt.csv)
+- LK-seeded ascending pick list: [benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_pick.csv](./benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_pick.csv)
+- LK-seeded ascending alternatives: [benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_alt.csv](./benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_alt.csv)
+- LK-seeded ascending summary: [benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_summary.json](./benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_summary.json)
 - Imported TSP benchmark summary: [benchmark_outputs/full_data_imported_tsp/run_summary.json](./benchmark_outputs/full_data_imported_tsp/run_summary.json)
 - Imported city swap pick list: [benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_pick.csv](./benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_pick.csv)
 - Imported city swap alternatives: [benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_alt.csv](./benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_alt.csv)
@@ -273,6 +281,17 @@ python benchmark_lk_full_data.py \
   --stock StockData.csv \
   --output-dir benchmark_outputs/full_data_lk \
   --summary-output benchmark_outputs/full_data_lk/run_summary.json
+```
+
+### LK Seed For 1-Location Articles + Ascending Grouped Insertion
+
+```bash
+.venv/bin/python lk_seed_one_loc_ascending_open_thm_benchmark.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_full_alt.csv \
+  --summary-output benchmark_outputs/full_data_lk_seed/lk_seed_one_loc_ascending_open_thm_summary.json
 ```
 
 ### Imported TSP Route Post-Optimizers
