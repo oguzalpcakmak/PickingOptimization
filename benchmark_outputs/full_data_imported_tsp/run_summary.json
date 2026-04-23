@@ -1,0 +1,61 @@
+{
+  "orders": "PickOrder.csv",
+  "stock": "StockData.csv",
+  "weights": {
+    "distance": 1,
+    "thm": 15,
+    "floor": 30
+  },
+  "route_optimizers": {
+    "imported_city_swap": "Imported City Swap",
+    "imported_simulated_annealing": "Imported Simulated Annealing",
+    "imported_genetic": "Imported Genetic"
+  },
+  "rows": [
+    {
+      "solver": "Route-aware regret + imported city swap routing",
+      "comparable_objective": 41306.64,
+      "native_objective": 41306.64,
+      "distance": 8276.64,
+      "floors": 6,
+      "thms": 2190,
+      "pick_rows": 2827,
+      "visited_nodes": 799,
+      "solve_time": 7.93,
+      "status": "Completed",
+      "route_optimizer": "imported_city_swap",
+      "pick_output": "benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_alt.csv"
+    },
+    {
+      "solver": "Route-aware regret + imported simulated annealing routing",
+      "comparable_objective": 41341.44,
+      "native_objective": 41341.44,
+      "distance": 8311.44,
+      "floors": 6,
+      "thms": 2190,
+      "pick_rows": 2827,
+      "visited_nodes": 799,
+      "solve_time": 10.55,
+      "status": "Completed",
+      "route_optimizer": "imported_simulated_annealing",
+      "pick_output": "benchmark_outputs/full_data_imported_tsp/imported_sa_full_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_imported_tsp/imported_sa_full_alt.csv"
+    },
+    {
+      "solver": "Route-aware regret + imported genetic routing",
+      "comparable_objective": 41341.44,
+      "native_objective": 41341.44,
+      "distance": 8311.44,
+      "floors": 6,
+      "thms": 2190,
+      "pick_rows": 2827,
+      "visited_nodes": 799,
+      "solve_time": 7.33,
+      "status": "Completed",
+      "route_optimizer": "imported_genetic",
+      "pick_output": "benchmark_outputs/full_data_imported_tsp/imported_genetic_full_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_imported_tsp/imported_genetic_full_alt.csv"
+    }
+  ]
+}

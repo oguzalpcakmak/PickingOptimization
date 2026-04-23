@@ -35,13 +35,21 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 | Adaptive Large Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 6.93s | Completed |
 | Variable Neighborhood Search | 36674.88 | 36674.88 | 9764.88 | 6 | 1782 | 2837 | 1116 | 7.09s | Completed |
 | Fast THM-first + S-shape routing | 37135.12 | 37135.12 | 10270.12 | 6 | 1779 | 2841 | 1140 | 1.43s | Completed |
+| Route-aware regret + LK2 routing | 40832.32 | 40832.32 | 7802.32 | 6 | 2190 | 2827 | 799 | 7.42s | Completed |
 | Route-aware regret greedy | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 9.18s | Completed |
 | GRASP multi-start | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 18.61s | Completed |
+| Route-aware regret + imported city swap routing | 41306.64 | 41306.64 | 8276.64 | 6 | 2190 | 2827 | 799 | 7.93s | Completed |
 | GRASP multi-start (no 2-opt) | 41341.44 | 41341.44 | 8311.44 | 6 | 2190 | 2827 | 799 | 16.96s | Completed |
+| Route-aware regret + imported simulated annealing routing | 41341.44 | 41341.44 | 8311.44 | 6 | 2190 | 2827 | 799 | 10.55s | Completed |
+| Route-aware regret + imported genetic routing | 41341.44 | 41341.44 | 8311.44 | 6 | 2190 | 2827 | 799 | 7.33s | Completed |
 | Pure strict grouped cheapest insertion (no cap) | 41546.56 | 41546.56 | 8546.56 | 6 | 2188 | 2823 | 811 | 292.89s | Completed |
 | 2min strict prepass + GRASP residual (no 2-opt) | 41471.56 | 41471.56 | 8546.56 | 6 | 2183 | 2824 | 821 | 209.33s | Completed |
 | Strict descending grouped insertion + open THM shortcut (no cap) | 43801.56 | 43801.56 | 8821.56 | 6 | 2320 | 2820 | 887 | 102.08s | Completed |
 | Existing Betul heuristic | 44863.08 | 173189.96 | 9388.08 | 6 | 2353 | 2867 | 1178 | 1.86s | Completed |
+| GTSP Genetic Algorithm (cap 4) | 43851.20 | 43851.20 | 8901.20 | 6 | 2318 | 2786 | 963 | 10.79s | Completed |
+| GTSP Tabu Search (cap 4) | 43973.68 | 43973.68 | 9023.68 | 6 | 2318 | 2786 | 964 | 11.17s | Completed |
+| GTSP Ant Colony (cap 4) | 44071.56 | 44071.56 | 9121.56 | 6 | 2318 | 2786 | 963 | 134.77s | Completed |
+| GTSP Simulated Annealing (cap 4) | 44143.76 | 44143.76 | 9193.76 | 6 | 2318 | 2786 | 963 | 11.04s | Completed |
 | Historical actual operation (recorded CSV) | 63208.06 | n/a | 19483.06 | 6 | 2903 | 6255 | 1649 | n/a | Historical baseline |
 | Exact Gurobi, 120s limit | 93662.44 | 93662.44 | 52412.44 | 6 | 2738 | 3156 | 915 | 120.09s | Time-limited incumbent |
 | THM-min + RR-style aisle DP | n/a | n/a | n/a | n/a | n/a | n/a | n/a | ~61s before stop | DNF on full data |
@@ -70,21 +78,43 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 
 1. Large / Adaptive Large / Variable Neighborhood Search: `36674.88`
 2. Fast THM-first + S-shape routing: `37135.12`
-3. Route-aware regret greedy: `41079.08`
-4. GRASP multi-start: `41079.08`
-5. GRASP multi-start (no 2-opt): `41341.44`
-6. 2min strict prepass + GRASP residual (no 2-opt): `41471.56`
-7. Pure strict grouped cheapest insertion (no cap): `41546.56`
-8. Strict descending grouped insertion + open THM shortcut (no cap): `43801.56`
-9. Existing Betul heuristic: `44863.08`
-10. Historical actual operation baseline: `63208.06`
-11. Exact Gurobi, 120-second incumbent: `93662.44`
-12. THM-min + RR-style aisle DP: no completed full-data result
-13. THM-min + S-shape routing: not benchmarked yet
+3. Route-aware regret + LK2 routing: `40832.32`
+4. Route-aware regret greedy: `41079.08`
+5. GRASP multi-start: `41079.08`
+6. Route-aware regret + imported city swap routing: `41306.64`
+7. GRASP multi-start (no 2-opt): `41341.44`
+8. Route-aware regret + imported simulated annealing routing: `41341.44`
+9. Route-aware regret + imported genetic routing: `41341.44`
+10. 2min strict prepass + GRASP residual (no 2-opt): `41471.56`
+11. Pure strict grouped cheapest insertion (no cap): `41546.56`
+12. Strict descending grouped insertion + open THM shortcut (no cap): `43801.56`
+13. GTSP Genetic Algorithm (cap 4): `43851.20`
+14. GTSP Tabu Search (cap 4): `43973.68`
+15. GTSP Ant Colony (cap 4): `44071.56`
+16. GTSP Simulated Annealing (cap 4): `44143.76`
+17. Existing Betul heuristic: `44863.08`
+18. Historical actual operation baseline: `63208.06`
+19. Exact Gurobi, 120-second incumbent: `93662.44`
+20. THM-min + RR-style aisle DP: no completed full-data result
+21. THM-min + S-shape routing: not benchmarked yet
 
 ## Notes
 
 - Including the longer reruns, the current best completed full-data result in this repo is now the `10min` ALNS run at `36520.88`.
+- The imported `lk_heuristic` package was integrated as a warehouse-aware per-floor route optimizer on top of the deterministic regret allocation. Using the package's `lk2_improve` search lowered the full-data objective from `41079.08` to `40832.32`, a pure route-distance gain of `246.76` with the same `2190` THMs, `6` floors, `2827` pick rows, and `799` visited nodes.
+- That LK-routed regret run also finished faster than the old regret baseline on this instance (`7.42s` vs `9.18s`). In this integration, the imported package is improving route order only; location/THM selection still comes from the repo's regret allocator.
+- The imported TSP trio from `3-heuristic-algorithms-in-Python-for-Travelling-Salesman-Problem-main` was also adapted as route-only post-optimizers on top of the same regret allocation. None of those three improved the base regret route on full data.
+- Their full-data results were:
+  - imported city swap: `41306.64`
+  - imported simulated annealing: `41341.44`
+  - imported genetic: `41341.44`
+- The best of that group, `imported city swap`, still finished `227.56` worse than plain regret and `474.32` worse than the LK-routed regret variant. All three kept the same `2190` THMs and `6` floors, so the gap is entirely route-distance quality.
+- During integration, the imported genetic logic needed a guard against population collapse. Without that, parent selection could stall while trying to draw more unique parents than the degenerated population still contained.
+- The GTSP-family full-data benchmark was rerun after two warehouse-specific improvements: a regret-seeded initial path and a warehouse-aware construction objective during search. The refreshed benchmark also widened the shared GTSP candidate cap from `2` to `4` per article.
+- That update improved the best GTSP result from the earlier `46870.56` down to `43851.20`, a gain of `3019.36` objective points.
+- In the refreshed GTSP benchmark, `GTSP Genetic Algorithm (cap 4)` is the strongest variant at `43851.20`. That is `1011.88` better than the legacy `betul-heuristic.py` baseline and only `49.64` worse than `Strict descending grouped insertion + open THM shortcut (no cap)`.
+- All four refreshed GTSP variants converged to a much tighter band than before and, notably, to the same `2318` opened THMs. The remaining quality differences in that family now come mostly from route distance rather than THM count.
+- The imported GTSP ant-colony method remains the most expensive GTSP variant on full data. Even with only `1` ant and `1` iteration, the seeded cap-4 run still took `134.77s`, while the other GTSP variants finished in about `10.79s` to `11.17s`.
 - The standalone `GRASP multi-start (no 2-opt)` rerun finished at `41341.44`, which is `262.36` worse than plain GRASP while opening the same number of THMs and floors. That gap comes entirely from longer routes, which is a clean signal that the final `2-opt` pass is materially helping on the full instance.
 - The fully uncapped `Pure strict grouped cheapest insertion` benchmark finished at `41546.56` after `292.89s` (about `4.88` minutes of strict insertion plus negligible prep). It ended worse than both plain `GRASP (no 2-opt)` and the `2min strict prepass + GRASP residual` hybrid, which confirms that pushing strict insertion all the way to completion is not buying enough global quality to justify its extra runtime on this instance.
 - The `Strict descending grouped insertion + open THM shortcut` variant was much faster than the ascending uncapped strict pass (`102.08s` vs `292.89s`), but it was also clearly worse on solution quality: `43801.56` objective, `2320` THMs, and `8821.56 m` distance. That is a strong signal that solving the highest-alternative articles first is a poor priority rule for this instance, even when open-THM reuse is allowed.
@@ -126,6 +156,13 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 
 - Existing heuristic implementation: [betul-heuristic.py](./betul-heuristic.py)
 - New regret heuristic: [regret_based_heuristic.py](./regret_based_heuristic.py)
+- LK-routed warehouse heuristic: [lk_warehouse_heuristic.py](./lk_warehouse_heuristic.py)
+- LK full-data benchmark runner: [benchmark_lk_full_data.py](./benchmark_lk_full_data.py)
+- Imported LK core: [lk_heuristic-master/src/lk_heuristic/models/tsp.py](./lk_heuristic-master/src/lk_heuristic/models/tsp.py)
+- Imported TSP warehouse heuristic: [imported_tsp_warehouse_heuristic.py](./imported_tsp_warehouse_heuristic.py)
+- Imported TSP route adapters: [imported_tsp_route_optimizers.py](./imported_tsp_route_optimizers.py)
+- Imported TSP full-data benchmark runner: [benchmark_imported_tsp_full_data.py](./benchmark_imported_tsp_full_data.py)
+- Imported TSP source folder: [3-heuristic-algorithms-in-Python-for-Travelling-Salesman-Problem-main](./3-heuristic-algorithms-in-Python-for-Travelling-Salesman-Problem-main)
 - New GRASP heuristic: [grasp_heuristic.py](./grasp_heuristic.py)
 - GRASP heuristic without final 2-opt: [grasp_no_two_opt_heuristic.py](./grasp_no_two_opt_heuristic.py)
 - Hybrid strict+GRASP benchmark script: [hybrid_strict120_grasp_no2opt_benchmark.py](./hybrid_strict120_grasp_no2opt_benchmark.py)
@@ -133,6 +170,14 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - New LNS heuristic: [lns_heuristic.py](./lns_heuristic.py)
 - New ALNS heuristic: [alns_heuristic.py](./alns_heuristic.py)
 - Fast THM-first + S-shape heuristic: [fast_thm_first_s_shape_heuristic.py](./fast_thm_first_s_shape_heuristic.py)
+- GTSP full-data benchmark runner: [benchmark_gtsp_full_data.py](./benchmark_gtsp_full_data.py)
+- GTSP warehouse CLI runner: [gtsp_warehouse_solver.py](./gtsp_warehouse_solver.py)
+- GTSP warehouse adapter: [GTSP-master/warehouse_problem.py](./GTSP-master/warehouse_problem.py)
+- GTSP imported algorithm implementations:
+  - [GTSP-master/Algorithms/Annealing.py](./GTSP-master/Algorithms/Annealing.py)
+  - [GTSP-master/Algorithms/Antcolony.py](./GTSP-master/Algorithms/Antcolony.py)
+  - [GTSP-master/Algorithms/Genetic.py](./GTSP-master/Algorithms/Genetic.py)
+  - [GTSP-master/Algorithms/Tabu.py](./GTSP-master/Algorithms/Tabu.py)
 - THM-min + RR-style heuristic: [thm_min_rr_heuristic.py](./thm_min_rr_heuristic.py)
 - THM-min + S-shape heuristic: [thm_min_s_shape_heuristic.py](./thm_min_s_shape_heuristic.py)
 - Shared heuristic utilities: [heuristic_common.py](./heuristic_common.py)
@@ -145,6 +190,25 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - Betul alternatives: [benchmark_outputs/full_data/betul_full_alt.csv](./benchmark_outputs/full_data/betul_full_alt.csv)
 - Fast THM-first + S-shape pick list: [benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv](./benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv)
 - Fast THM-first + S-shape alternatives: [benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv](./benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv)
+- LK benchmark summary: [benchmark_outputs/full_data_lk/run_summary.json](./benchmark_outputs/full_data_lk/run_summary.json)
+- LK-routed regret pick list: [benchmark_outputs/full_data_lk/lk_regret_full_pick.csv](./benchmark_outputs/full_data_lk/lk_regret_full_pick.csv)
+- LK-routed regret alternatives: [benchmark_outputs/full_data_lk/lk_regret_full_alt.csv](./benchmark_outputs/full_data_lk/lk_regret_full_alt.csv)
+- Imported TSP benchmark summary: [benchmark_outputs/full_data_imported_tsp/run_summary.json](./benchmark_outputs/full_data_imported_tsp/run_summary.json)
+- Imported city swap pick list: [benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_pick.csv](./benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_pick.csv)
+- Imported city swap alternatives: [benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_alt.csv](./benchmark_outputs/full_data_imported_tsp/imported_city_swap_full_alt.csv)
+- Imported simulated annealing pick list: [benchmark_outputs/full_data_imported_tsp/imported_sa_full_pick.csv](./benchmark_outputs/full_data_imported_tsp/imported_sa_full_pick.csv)
+- Imported simulated annealing alternatives: [benchmark_outputs/full_data_imported_tsp/imported_sa_full_alt.csv](./benchmark_outputs/full_data_imported_tsp/imported_sa_full_alt.csv)
+- Imported genetic pick list: [benchmark_outputs/full_data_imported_tsp/imported_genetic_full_pick.csv](./benchmark_outputs/full_data_imported_tsp/imported_genetic_full_pick.csv)
+- Imported genetic alternatives: [benchmark_outputs/full_data_imported_tsp/imported_genetic_full_alt.csv](./benchmark_outputs/full_data_imported_tsp/imported_genetic_full_alt.csv)
+- GTSP benchmark summary: [benchmark_outputs/full_data_gtsp/run_summary.json](./benchmark_outputs/full_data_gtsp/run_summary.json)
+- GTSP annealing pick list: [benchmark_outputs/full_data_gtsp/gtsp_annealing_pick.csv](./benchmark_outputs/full_data_gtsp/gtsp_annealing_pick.csv)
+- GTSP annealing alternatives: [benchmark_outputs/full_data_gtsp/gtsp_annealing_alt.csv](./benchmark_outputs/full_data_gtsp/gtsp_annealing_alt.csv)
+- GTSP tabu pick list: [benchmark_outputs/full_data_gtsp/gtsp_tabu_pick.csv](./benchmark_outputs/full_data_gtsp/gtsp_tabu_pick.csv)
+- GTSP tabu alternatives: [benchmark_outputs/full_data_gtsp/gtsp_tabu_alt.csv](./benchmark_outputs/full_data_gtsp/gtsp_tabu_alt.csv)
+- GTSP genetic pick list: [benchmark_outputs/full_data_gtsp/gtsp_genetic_pick.csv](./benchmark_outputs/full_data_gtsp/gtsp_genetic_pick.csv)
+- GTSP genetic alternatives: [benchmark_outputs/full_data_gtsp/gtsp_genetic_alt.csv](./benchmark_outputs/full_data_gtsp/gtsp_genetic_alt.csv)
+- GTSP ant colony pick list: [benchmark_outputs/full_data_gtsp/gtsp_antcolony_pick.csv](./benchmark_outputs/full_data_gtsp/gtsp_antcolony_pick.csv)
+- GTSP ant colony alternatives: [benchmark_outputs/full_data_gtsp/gtsp_antcolony_alt.csv](./benchmark_outputs/full_data_gtsp/gtsp_antcolony_alt.csv)
 - VNS pick list: [benchmark_outputs/full_data/vns_full_pick.csv](./benchmark_outputs/full_data/vns_full_pick.csv)
 - VNS alternatives: [benchmark_outputs/full_data/vns_full_alt.csv](./benchmark_outputs/full_data/vns_full_alt.csv)
 - LNS pick list: [benchmark_outputs/full_data/lns_full_pick.csv](./benchmark_outputs/full_data/lns_full_pick.csv)
@@ -201,6 +265,26 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
   --alternative-locations-output benchmark_outputs/full_data/regret_full_alt.csv
 ```
 
+### Route-Aware Regret + LK2 Routing
+
+```bash
+python benchmark_lk_full_data.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output-dir benchmark_outputs/full_data_lk \
+  --summary-output benchmark_outputs/full_data_lk/run_summary.json
+```
+
+### Imported TSP Route Post-Optimizers
+
+```bash
+python benchmark_imported_tsp_full_data.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output-dir benchmark_outputs/full_data_imported_tsp \
+  --summary-output benchmark_outputs/full_data_imported_tsp/run_summary.json
+```
+
 ### Fast THM-First + S-Shape Routing
 
 ```bash
@@ -209,6 +293,16 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
   --stock StockData.csv \
   --output benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv \
   --alternative-locations-output benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv
+```
+
+### GTSP Family Full-Data Benchmark
+
+```bash
+python benchmark_gtsp_full_data.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output-dir benchmark_outputs/full_data_gtsp \
+  --summary-output benchmark_outputs/full_data_gtsp/run_summary.json
 ```
 
 ### 2min Strict Prepass + GRASP Residual (No 2-opt)

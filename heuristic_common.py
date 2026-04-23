@@ -14,7 +14,9 @@ construction logic in separate files.
 from __future__ import annotations
 
 import csv
+import logging
 import math
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -817,6 +819,160 @@ def optimize_route(
     return route, route_cost(route)
 
 
+def _load_lk_runtime():
+    repo_root = Path(__file__).resolve().parent
+    lk_src = repo_root / "lk_heuristic-master" / "src"
+    if str(lk_src) not in sys.path:
+        sys.path.insert(0, str(lk_src))
+    try:
+        from lk_heuristic.models.node import Node  # type: ignore
+        from lk_heuristic.models.tsp import Tsp  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise DataError(
+            "Lin-Kernighan runtime could not be imported. "
+            "Expected either a local 'lk_heuristic-master/src' checkout or an installed "
+            "'lk_heuristic' package."
+        ) from exc
+    return Node, Tsp
+
+
+def _seed_route_from_hint(
+    nodes: set[Node2D],
+    hinted_route: Sequence[Node2D] | None,
+) -> list[Node2D] | None:
+    if not hinted_route:
+        return None
+    route = [node for node in hinted_route if node in nodes]
+    seen = set(route)
+    for node in sorted(nodes - seen):
+        _, insert_index = best_insertion(route, node)
+        route.insert(insert_index, node)
+    return route
+
+
+def optimize_route_with_lk(
+    nodes: Iterable[Node2D],
+    *,
+    initial_route: Sequence[Node2D] | None = None,
+    solution_method: str = "lk2_improve",
+    backtracking: tuple[int, int] = (5, 5),
+    reduction_level: int = 4,
+    reduction_cycle: int = 4,
+) -> tuple[list[Node2D], float]:
+    unique_nodes = sorted(set(nodes))
+    if len(unique_nodes) <= 1:
+        return unique_nodes, route_cost(unique_nodes)
+
+    Node, Tsp = _load_lk_runtime()
+
+    class WarehouseLKNode(Node):
+        def __init__(self, warehouse_node: Node2D | None, *, is_depot: bool = False) -> None:
+            super().__init__()
+            self.warehouse_node = warehouse_node
+            self.is_depot = is_depot
+
+    unique_node_set = set(unique_nodes)
+    seed_route = None if initial_route is None else [node for node in initial_route if node in unique_node_set]
+    if not seed_route:
+        seed_route, _ = optimize_route(unique_nodes, use_regret=True, two_opt_passes=2)
+
+    seen = set(seed_route)
+    for node in unique_nodes:
+        if node not in seen:
+            seed_route.append(node)
+
+    depot = WarehouseLKNode(None, is_depot=True)
+    lk_nodes = [depot] + [WarehouseLKNode(node) for node in seed_route]
+
+    def warehouse_cost(left, right) -> float:
+        if left.is_depot and right.is_depot:
+            return 0.0
+        if left.is_depot:
+            return entry_exit_distance(right.warehouse_node)
+        if right.is_depot:
+            return entry_exit_distance(left.warehouse_node)
+        return same_floor_distance(left.warehouse_node, right.warehouse_node)
+
+    tsp = Tsp(
+        lk_nodes,
+        warehouse_cost,
+        shuffle=False,
+        backtracking=backtracking,
+        reduction_level=reduction_level,
+        reduction_cycle=reduction_cycle,
+        tour_type="cycle",
+        logging_level=logging.WARNING,
+    )
+    solver = tsp.methods.get(solution_method)
+    if solver is None:
+        raise DataError(f"Unsupported LK solution method '{solution_method}'.")
+    solver()
+
+    ordered_nodes = tsp.tour.get_nodes(start_node=depot)
+    route = [node.warehouse_node for node in ordered_nodes if not node.is_depot]
+    return route, route_cost(route)
+
+
+def rebuild_route(
+    active_nodes: Iterable[Node2D],
+    *,
+    hinted_route: Sequence[Node2D] | None = None,
+    route_rebuild_threshold: int | None = 60,
+    use_regret: bool = True,
+    two_opt_passes: int = 3,
+    route_optimizer: str = "regret_2opt",
+    lk_backtracking: tuple[int, int] = (5, 5),
+    lk_reduction_level: int = 4,
+    lk_reduction_cycle: int = 4,
+) -> tuple[list[Node2D], float]:
+    nodes = set(active_nodes)
+    if not nodes:
+        return [], 0.0
+
+    seed_route = None
+    should_rebuild_from_scratch = (
+        route_rebuild_threshold is None or len(nodes) <= route_rebuild_threshold
+    )
+    if hinted_route and not should_rebuild_from_scratch:
+        seed_route = _seed_route_from_hint(nodes, hinted_route)
+
+    if route_optimizer == "regret_2opt":
+        if seed_route is not None:
+            route = two_opt_route(seed_route, max_passes=two_opt_passes)
+            return route, route_cost(route)
+        return optimize_route(nodes, use_regret=use_regret, two_opt_passes=two_opt_passes)
+
+    if route_optimizer in {
+        "imported_city_swap",
+        "imported_simulated_annealing",
+        "imported_genetic",
+    }:
+        from imported_tsp_route_optimizers import optimize_route_with_imported_tsp
+
+        if seed_route is None:
+            seed_route, _ = optimize_route(nodes, use_regret=use_regret, two_opt_passes=two_opt_passes)
+        route = optimize_route_with_imported_tsp(
+            sorted(nodes),
+            initial_route=seed_route,
+            optimizer=route_optimizer,
+            depot_cost=entry_exit_distance,
+            pair_cost=same_floor_distance,
+        )
+        return route, route_cost(route)
+
+    if route_optimizer not in {"lk1_improve", "lk2_improve"}:
+        raise DataError(f"Unsupported route optimizer '{route_optimizer}'.")
+
+    return optimize_route_with_lk(
+        nodes,
+        initial_route=seed_route,
+        solution_method=route_optimizer,
+        backtracking=lk_backtracking,
+        reduction_level=lk_reduction_level,
+        reduction_cycle=lk_reduction_cycle,
+    )
+
+
 def load_demands(path: str | Path) -> dict[int, int]:
     totals: dict[int, int] = defaultdict(int)
     with Path(path).open(newline="", encoding="utf-8-sig") as handle:
@@ -1072,6 +1228,10 @@ def build_solution(
     two_opt_passes: int = 3,
     route_hints_by_floor: dict[str, list[Node2D]] | None = None,
     route_rebuild_threshold: int | None = 60,
+    route_optimizer: str = "regret_2opt",
+    lk_backtracking: tuple[int, int] = (5, 5),
+    lk_reduction_level: int = 4,
+    lk_reduction_cycle: int = 4,
 ) -> Solution:
     picks_by_floor: dict[str, dict[str, int]] = defaultdict(dict)
     active_nodes_by_floor: dict[str, set[Node2D]] = defaultdict(set)
@@ -1089,26 +1249,17 @@ def build_solution(
         if route_hints_by_floor is not None:
             hinted_route = list(route_hints_by_floor.get(floor, []))
 
-        active_nodes = set(active_nodes_by_floor[floor])
-        should_rebuild_from_scratch = (
-            route_rebuild_threshold is None or len(active_nodes) <= route_rebuild_threshold
+        route, distance = rebuild_route(
+            active_nodes_by_floor[floor],
+            hinted_route=hinted_route,
+            route_rebuild_threshold=route_rebuild_threshold,
+            use_regret=use_regret_routing,
+            two_opt_passes=two_opt_passes,
+            route_optimizer=route_optimizer,
+            lk_backtracking=lk_backtracking,
+            lk_reduction_level=lk_reduction_level,
+            lk_reduction_cycle=lk_reduction_cycle,
         )
-
-        if hinted_route and not should_rebuild_from_scratch:
-            route = [node for node in hinted_route if node in active_nodes]
-            seen_nodes = set(route)
-            missing_nodes = sorted(active_nodes - seen_nodes)
-            for node in missing_nodes:
-                _, insert_index = best_insertion(route, node)
-                route.insert(insert_index, node)
-            route = two_opt_route(route, max_passes=two_opt_passes)
-            distance = route_cost(route)
-        else:
-            route, distance = optimize_route(
-                active_nodes_by_floor[floor],
-                use_regret=use_regret_routing,
-                two_opt_passes=two_opt_passes,
-            )
         opened_thms = {loc_lookup[lid].thm_id for lid in picks_by_floor[floor]}
         floor_results.append(
             FloorResult(

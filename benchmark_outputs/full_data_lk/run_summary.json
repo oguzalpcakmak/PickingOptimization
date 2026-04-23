@@ -1,0 +1,27 @@
+{
+  "orders": "PickOrder.csv",
+  "stock": "StockData.csv",
+  "weights": {
+    "distance": 1,
+    "thm": 15,
+    "floor": 30
+  },
+  "row": {
+    "solver": "Route-aware regret + LK2 routing",
+    "comparable_objective": 40832.32,
+    "native_objective": 40832.32,
+    "distance": 7802.32,
+    "floors": 6,
+    "thms": 2190,
+    "pick_rows": 2827,
+    "visited_nodes": 799,
+    "solve_time": 7.42,
+    "status": "Completed",
+    "route_optimizer": "lk2_improve",
+    "lk_backtracking": "5,5",
+    "lk_reduction_level": 4,
+    "lk_reduction_cycle": 4,
+    "pick_output": "benchmark_outputs/full_data_lk/lk_regret_full_pick.csv",
+    "alt_output": "benchmark_outputs/full_data_lk/lk_regret_full_alt.csv"
+  }
+}

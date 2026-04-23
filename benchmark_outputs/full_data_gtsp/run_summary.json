@@ -1,0 +1,98 @@
+{
+  "orders": "PickOrder.csv",
+  "stock": "StockData.csv",
+  "weights": {
+    "distance": 1,
+    "thm": 15,
+    "floor": 30
+  },
+  "rows": [
+    {
+      "solver": "GTSP Simulated Annealing (cap 4)",
+      "comparable_objective": 44143.76,
+      "native_objective": 44143.76,
+      "distance": 9193.76,
+      "floors": 6,
+      "thms": 2318,
+      "pick_rows": 2786,
+      "visited_nodes": 963,
+      "solve_time": 11.04,
+      "status": "Completed",
+      "candidate_cap": 4,
+      "iterations": 3,
+      "extra": {
+        "initial_temperature": 10.0,
+        "end_temperature": 0.1,
+        "cooling_rate": 0.99,
+        "inner_loops": 8
+      },
+      "pick_output": "benchmark_outputs/full_data_gtsp/gtsp_annealing_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_gtsp/gtsp_annealing_alt.csv"
+    },
+    {
+      "solver": "GTSP Tabu Search (cap 4)",
+      "comparable_objective": 43973.68,
+      "native_objective": 43973.68,
+      "distance": 9023.68,
+      "floors": 6,
+      "thms": 2318,
+      "pick_rows": 2786,
+      "visited_nodes": 964,
+      "solve_time": 11.17,
+      "status": "Completed",
+      "candidate_cap": 4,
+      "iterations": 3,
+      "extra": {
+        "tabu_length": null,
+        "neighborhood_size": 8
+      },
+      "pick_output": "benchmark_outputs/full_data_gtsp/gtsp_tabu_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_gtsp/gtsp_tabu_alt.csv"
+    },
+    {
+      "solver": "GTSP Genetic Algorithm (cap 4)",
+      "comparable_objective": 43851.2,
+      "native_objective": 43851.2,
+      "distance": 8901.2,
+      "floors": 6,
+      "thms": 2318,
+      "pick_rows": 2786,
+      "visited_nodes": 963,
+      "solve_time": 10.79,
+      "status": "Completed",
+      "candidate_cap": 4,
+      "iterations": 3,
+      "extra": {
+        "population": 8,
+        "crossRate": 0.8,
+        "varyRate": 0.2,
+        "eliteFraction": 0.1
+      },
+      "pick_output": "benchmark_outputs/full_data_gtsp/gtsp_genetic_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_gtsp/gtsp_genetic_alt.csv"
+    },
+    {
+      "solver": "GTSP Ant Colony (cap 4)",
+      "comparable_objective": 44071.56,
+      "native_objective": 44071.56,
+      "distance": 9121.56,
+      "floors": 6,
+      "thms": 2318,
+      "pick_rows": 2786,
+      "visited_nodes": 963,
+      "solve_time": 134.77,
+      "status": "Completed",
+      "candidate_cap": 4,
+      "iterations": 1,
+      "extra": {
+        "colony_size": 1,
+        "alpha": 1.0,
+        "beta": 2.0,
+        "evaporation": 0.35,
+        "q": 100.0
+      },
+      "pick_output": "benchmark_outputs/full_data_gtsp/gtsp_antcolony_pick.csv",
+      "alt_output": "benchmark_outputs/full_data_gtsp/gtsp_antcolony_alt.csv"
+    }
+  ]
+}
