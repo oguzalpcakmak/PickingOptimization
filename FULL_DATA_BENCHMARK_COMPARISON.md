@@ -37,6 +37,10 @@ This matters because `betul-heuristic.py` reports a much larger native objective
 | Fast THM-first + S-shape routing | 37135.12 | 37135.12 | 10270.12 | 6 | 1779 | 2841 | 1140 | 1.43s | Completed |
 | Route-aware regret greedy | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 9.18s | Completed |
 | GRASP multi-start | 41079.08 | 41079.08 | 8049.08 | 6 | 2190 | 2827 | 799 | 18.61s | Completed |
+| GRASP multi-start (no 2-opt) | 41341.44 | 41341.44 | 8311.44 | 6 | 2190 | 2827 | 799 | 16.96s | Completed |
+| Pure strict grouped cheapest insertion (no cap) | 41546.56 | 41546.56 | 8546.56 | 6 | 2188 | 2823 | 811 | 292.89s | Completed |
+| 2min strict prepass + GRASP residual (no 2-opt) | 41471.56 | 41471.56 | 8546.56 | 6 | 2183 | 2824 | 821 | 209.33s | Completed |
+| Strict descending grouped insertion + open THM shortcut (no cap) | 43801.56 | 43801.56 | 8821.56 | 6 | 2320 | 2820 | 887 | 102.08s | Completed |
 | Existing Betul heuristic | 44863.08 | 173189.96 | 9388.08 | 6 | 2353 | 2867 | 1178 | 1.86s | Completed |
 | Historical actual operation (recorded CSV) | 63208.06 | n/a | 19483.06 | 6 | 2903 | 6255 | 1649 | n/a | Historical baseline |
 | Exact Gurobi, 120s limit | 93662.44 | 93662.44 | 52412.44 | 6 | 2738 | 3156 | 915 | 120.09s | Time-limited incumbent |
@@ -68,15 +72,28 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 2. Fast THM-first + S-shape routing: `37135.12`
 3. Route-aware regret greedy: `41079.08`
 4. GRASP multi-start: `41079.08`
-5. Existing Betul heuristic: `44863.08`
-6. Historical actual operation baseline: `63208.06`
-7. Exact Gurobi, 120-second incumbent: `93662.44`
-8. THM-min + RR-style aisle DP: no completed full-data result
-9. THM-min + S-shape routing: not benchmarked yet
+5. GRASP multi-start (no 2-opt): `41341.44`
+6. 2min strict prepass + GRASP residual (no 2-opt): `41471.56`
+7. Pure strict grouped cheapest insertion (no cap): `41546.56`
+8. Strict descending grouped insertion + open THM shortcut (no cap): `43801.56`
+9. Existing Betul heuristic: `44863.08`
+10. Historical actual operation baseline: `63208.06`
+11. Exact Gurobi, 120-second incumbent: `93662.44`
+12. THM-min + RR-style aisle DP: no completed full-data result
+13. THM-min + S-shape routing: not benchmarked yet
 
 ## Notes
 
 - Including the longer reruns, the current best completed full-data result in this repo is now the `10min` ALNS run at `36520.88`.
+- The standalone `GRASP multi-start (no 2-opt)` rerun finished at `41341.44`, which is `262.36` worse than plain GRASP while opening the same number of THMs and floors. That gap comes entirely from longer routes, which is a clean signal that the final `2-opt` pass is materially helping on the full instance.
+- The fully uncapped `Pure strict grouped cheapest insertion` benchmark finished at `41546.56` after `292.89s` (about `4.88` minutes of strict insertion plus negligible prep). It ended worse than both plain `GRASP (no 2-opt)` and the `2min strict prepass + GRASP residual` hybrid, which confirms that pushing strict insertion all the way to completion is not buying enough global quality to justify its extra runtime on this instance.
+- The `Strict descending grouped insertion + open THM shortcut` variant was much faster than the ascending uncapped strict pass (`102.08s` vs `292.89s`), but it was also clearly worse on solution quality: `43801.56` objective, `2320` THMs, and `8821.56 m` distance. That is a strong signal that solving the highest-alternative articles first is a poor priority rule for this instance, even when open-THM reuse is allowed.
+- The new hybrid benchmark `2min strict prepass + GRASP residual (no 2-opt)` finished at `41471.56`. It opened `7` fewer THMs than plain GRASP (`2183` vs `2190`), but its distance grew by `497.48 m`, so it finished `392.48` worse overall under the shared `1 / 15 / 30` objective.
+- The phase split for that hybrid run was:
+  - `120.15s` in the strict prepass
+  - `88.95s` in the residual GRASP no-`2-opt` search
+  - `209.33s` total
+- In that same hybrid run, the 2-minute prepass fully cleared products with `2` through `22` candidate locations and partially entered the `23`-candidate group before handing the residual `251` articles to GRASP.
 - The `10min` LNS rerun also improved materially, reaching `36575.52`.
 - The `10min` VNS run finished early at `164.87s` and stopped at `36645.88`, which suggests the current VNS search structure saturates before the wall-clock budget on full data.
 - The historical actual-operation baseline comes from `Grup_Toplama_Verisi_With_PickOrder.csv`. For consistency with the benchmark table, its comparable distance is shown as `19483.06 m` using the repo's exact-style geometry. The raw file itself records `18387.56 m`, but it underestimates cross-floor travel by `1095.50 m`.
@@ -110,6 +127,8 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - Existing heuristic implementation: [betul-heuristic.py](./betul-heuristic.py)
 - New regret heuristic: [regret_based_heuristic.py](./regret_based_heuristic.py)
 - New GRASP heuristic: [grasp_heuristic.py](./grasp_heuristic.py)
+- GRASP heuristic without final 2-opt: [grasp_no_two_opt_heuristic.py](./grasp_no_two_opt_heuristic.py)
+- Hybrid strict+GRASP benchmark script: [hybrid_strict120_grasp_no2opt_benchmark.py](./hybrid_strict120_grasp_no2opt_benchmark.py)
 - New VNS heuristic: [vns_heuristic.py](./vns_heuristic.py)
 - New LNS heuristic: [lns_heuristic.py](./lns_heuristic.py)
 - New ALNS heuristic: [alns_heuristic.py](./alns_heuristic.py)
@@ -146,6 +165,17 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
 - Regret alternatives: [benchmark_outputs/full_data/regret_full_alt.csv](./benchmark_outputs/full_data/regret_full_alt.csv)
 - GRASP pick list: [benchmark_outputs/full_data/grasp_full_pick.csv](./benchmark_outputs/full_data/grasp_full_pick.csv)
 - GRASP alternatives: [benchmark_outputs/full_data/grasp_full_alt.csv](./benchmark_outputs/full_data/grasp_full_alt.csv)
+- GRASP no-2-opt pick list: [benchmark_outputs/full_data/grasp_no2opt_full_pick.csv](./benchmark_outputs/full_data/grasp_no2opt_full_pick.csv)
+- GRASP no-2-opt alternatives: [benchmark_outputs/full_data/grasp_no2opt_full_alt.csv](./benchmark_outputs/full_data/grasp_no2opt_full_alt.csv)
+- Pure strict grouped insertion pick list: [benchmark_outputs/full_data_strict/strict_grouped_no_cap_full_pick.csv](./benchmark_outputs/full_data_strict/strict_grouped_no_cap_full_pick.csv)
+- Pure strict grouped insertion alternatives: [benchmark_outputs/full_data_strict/strict_grouped_no_cap_full_alt.csv](./benchmark_outputs/full_data_strict/strict_grouped_no_cap_full_alt.csv)
+- Pure strict grouped insertion summary: [benchmark_outputs/full_data_strict/strict_grouped_no_cap_summary.json](./benchmark_outputs/full_data_strict/strict_grouped_no_cap_summary.json)
+- Descending strict+open-THM pick list: [benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_full_pick.csv](./benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_full_pick.csv)
+- Descending strict+open-THM alternatives: [benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_full_alt.csv](./benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_full_alt.csv)
+- Descending strict+open-THM summary: [benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_summary.json](./benchmark_outputs/full_data_desc_openthm/strict_desc_open_thm_no_cap_summary.json)
+- Hybrid pick list: [benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_pick.csv](./benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_pick.csv)
+- Hybrid alternatives: [benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_alt.csv](./benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_alt.csv)
+- Hybrid summary: [benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_summary.json](./benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_summary.json)
 - Exact 120s pick list: [benchmark_outputs/full_data/exact_full_pick.csv](./benchmark_outputs/full_data/exact_full_pick.csv)
 - Exact 120s alternatives: [benchmark_outputs/full_data/exact_full_alt.csv](./benchmark_outputs/full_data/exact_full_alt.csv)
 
@@ -179,6 +209,29 @@ These benchmark runs were launched with `--time-limit 600` on the same full-data
   --stock StockData.csv \
   --output benchmark_outputs/full_data/fast_thm_sshape_full_pick.csv \
   --alternative-locations-output benchmark_outputs/full_data/fast_thm_sshape_full_alt.csv
+```
+
+### 2min Strict Prepass + GRASP Residual (No 2-opt)
+
+```bash
+.venv/bin/python hybrid_strict120_grasp_no2opt_benchmark.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --phase1-limit 120 \
+  --iterations 25 \
+  --output benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_full_alt.csv \
+  --summary-output benchmark_outputs/full_data_hybrid/strict120_open_thm_grasp_no2opt_summary.json
+```
+
+### GRASP Multi-Start (No 2-opt)
+
+```bash
+.venv/bin/python grasp_no_two_opt_heuristic.py \
+  --orders PickOrder.csv \
+  --stock StockData.csv \
+  --output benchmark_outputs/full_data/grasp_no2opt_full_pick.csv \
+  --alternative-locations-output benchmark_outputs/full_data/grasp_no2opt_full_alt.csv
 ```
 
 ### Variable Neighborhood Search
