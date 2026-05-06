@@ -22,6 +22,7 @@ This repository is organized so solver code, datasets, generated outputs, and wr
 | `notebooks/` | Colab/Jupyter notebooks. |
 | `external/` | Third-party or imported research/reference repositories. |
 | `rust_solver/` | Pure Rust speed-experiment implementation of the current-best heuristic. |
+| `cpp_solver/` | Dependency-free C++17 speed-experiment implementation of the current-best heuristic. |
 | `Simulation/` | React visualization app, kept in its original folder. |
 
 ## Common Commands
@@ -61,6 +62,33 @@ cargo run --release -- \
   --output ../outputs/benchmark_outputs/rust_current_best/current_best_pick.csv \
   --alternative-locations-output ../outputs/benchmark_outputs/rust_current_best/current_best_alt.csv \
   --summary-output ../outputs/benchmark_outputs/rust_current_best/current_best_summary.json
+```
+
+Run the comprehensive Rust benchmark:
+
+```bash
+.venv/bin/python src/benchmark_rust_current_best.py
+```
+
+Run the C++ speed-experiment version:
+
+```bash
+mkdir -p cpp_solver/build
+c++ -std=c++17 -O3 cpp_solver/src/main.cpp -o cpp_solver/build/picking_current_best_cpp
+./cpp_solver/build/picking_current_best_cpp \
+  --orders data/full/PickOrder.csv \
+  --stock data/full/StockData.csv \
+  --time-limit 300 \
+  --fallback-method visited-area \
+  --output outputs/benchmark_outputs/cpp_current_best/current_best_pick.csv \
+  --alternative-locations-output outputs/benchmark_outputs/cpp_current_best/current_best_alt.csv \
+  --summary-output outputs/benchmark_outputs/cpp_current_best/current_best_summary.json
+```
+
+Run the comprehensive C++ benchmark:
+
+```bash
+.venv/bin/python src/benchmark_cpp_current_best.py --fallback-method visited-area
 ```
 
 Run the exact solver wrapper:

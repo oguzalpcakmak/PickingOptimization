@@ -28,6 +28,9 @@ const FLOOR_ORDER: [&str; 6] = ["MZN1", "MZN2", "MZN3", "MZN4", "MZN5", "MZN6"];
 const EPS: f64 = 1e-9;
 
 type AppResult<T> = Result<T, String>;
+type BoxKey = (String, i32, i32, i32, String);
+type HalfBlockKey = (String, i32, i32);
+type AisleKey = (String, i32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Node {
@@ -336,6 +339,7 @@ struct Args {
     fallback_article_rcl_size: usize,
     fallback_location_rcl_size: usize,
     fallback_seed: u64,
+    fallback_method: String,
     cleanup_operator: String,
     cleanup_strategy: String,
     cleanup_passes: usize,
@@ -344,6 +348,35 @@ struct Args {
     output: PathBuf,
     alt_output: PathBuf,
     summary_output: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct FallbackSummary {
+    articles: usize,
+    steps: usize,
+    candidate_evals: usize,
+    rule: String,
+    visited_box_hits: usize,
+    visited_half_block_hits: usize,
+    visited_aisle_hits: usize,
+    visited_floor_hits: usize,
+    random_hits: usize,
+}
+
+impl Default for FallbackSummary {
+    fn default() -> Self {
+        Self {
+            articles: 0,
+            steps: 0,
+            candidate_evals: 0,
+            rule: "not used".to_string(),
+            visited_box_hits: 0,
+            visited_half_block_hits: 0,
+            visited_aisle_hits: 0,
+            visited_floor_hits: 0,
+            random_hits: 0,
+        }
+    }
 }
 
 fn main() {
@@ -568,22 +601,30 @@ fn solve_current_best(
         })
         .collect();
 
-    let mut fallback_articles = 0usize;
-    let mut fallback_steps = 0usize;
-    let mut fallback_candidate_evals = 0usize;
+    let mut fallback_summary = FallbackSummary::default();
     if timed_out && args.fallback_on_time_limit {
-        let fallback = complete_with_grasp_fallback(
-            &mut state,
-            problem,
-            weights,
-            args.fallback_alpha,
-            args.fallback_article_rcl_size,
-            args.fallback_location_rcl_size,
-            args.fallback_seed,
-        )?;
-        fallback_articles = fallback.0;
-        fallback_steps = fallback.1;
-        fallback_candidate_evals = fallback.2;
+        fallback_summary = match args.fallback_method.as_str() {
+            "grasp" => complete_with_grasp_fallback(
+                &mut state,
+                problem,
+                weights,
+                args.fallback_alpha,
+                args.fallback_article_rcl_size,
+                args.fallback_location_rcl_size,
+                args.fallback_seed,
+            )?,
+            "visited-area" => complete_with_visited_area_fallback(
+                &mut state,
+                problem,
+                weights,
+                args.fallback_seed,
+            )?,
+            other => {
+                return Err(format!(
+                    "unsupported fallback method '{other}', expected grasp or visited-area"
+                ));
+            }
+        };
     }
 
     let construction_time = started.elapsed().as_secs_f64();
@@ -604,6 +645,8 @@ fn solve_current_best(
         "fallback_used".to_string(),
         (timed_out && args.fallback_on_time_limit).to_string(),
     );
+    notes.insert("fallback_method".to_string(), args.fallback_method.clone());
+    notes.insert("fallback_rule".to_string(), fallback_summary.rule.clone());
     notes.insert(
         "remaining_articles_before_fallback".to_string(),
         remaining_before_fallback.len().to_string(),
@@ -624,12 +667,35 @@ fn solve_current_best(
     );
     notes.insert(
         "fallback_articles".to_string(),
-        fallback_articles.to_string(),
+        fallback_summary.articles.to_string(),
     );
-    notes.insert("fallback_steps".to_string(), fallback_steps.to_string());
+    notes.insert(
+        "fallback_steps".to_string(),
+        fallback_summary.steps.to_string(),
+    );
     notes.insert(
         "fallback_candidate_evals".to_string(),
-        fallback_candidate_evals.to_string(),
+        fallback_summary.candidate_evals.to_string(),
+    );
+    notes.insert(
+        "fallback_visited_box_hits".to_string(),
+        fallback_summary.visited_box_hits.to_string(),
+    );
+    notes.insert(
+        "fallback_visited_half_block_hits".to_string(),
+        fallback_summary.visited_half_block_hits.to_string(),
+    );
+    notes.insert(
+        "fallback_visited_aisle_hits".to_string(),
+        fallback_summary.visited_aisle_hits.to_string(),
+    );
+    notes.insert(
+        "fallback_visited_floor_hits".to_string(),
+        fallback_summary.visited_floor_hits.to_string(),
+    );
+    notes.insert(
+        "fallback_random_hits".to_string(),
+        fallback_summary.random_hits.to_string(),
     );
     notes.insert(
         "prep_single_location_sec".to_string(),
@@ -641,8 +707,12 @@ fn solve_current_best(
         format!("{:.6}", grouped_start.elapsed().as_secs_f64()),
     );
 
+    let fallback_label = match args.fallback_method.as_str() {
+        "visited-area" => "visited-area fallback",
+        _ => "GRASP fallback",
+    };
     let solution = build_solution_from_state(
-        "Rust current-best: grouped insertion + open THM shortcut + GRASP fallback".to_string(),
+        format!("Rust current-best: grouped insertion + open THM shortcut + {fallback_label}"),
         problem,
         &state,
         weights,
@@ -659,7 +729,7 @@ fn complete_with_grasp_fallback(
     article_rcl_size: usize,
     location_rcl_size: usize,
     seed: u64,
-) -> AppResult<(usize, usize, usize)> {
+) -> AppResult<FallbackSummary> {
     let mut rng = SimpleRng::new(seed);
     let remaining_demands: BTreeMap<i32, i32> = problem
         .demands
@@ -715,7 +785,167 @@ fn complete_with_grasp_fallback(
         articles_completed += 1;
     }
 
-    Ok((articles_completed, steps, candidate_evals))
+    Ok(FallbackSummary {
+        articles: articles_completed,
+        steps,
+        candidate_evals,
+        rule: "GRASP-style article RCL + location RCL".to_string(),
+        ..FallbackSummary::default()
+    })
+}
+
+fn complete_with_visited_area_fallback(
+    state: &mut State,
+    problem: &Problem,
+    weights: Weights,
+    seed: u64,
+) -> AppResult<FallbackSummary> {
+    let mut rng = SimpleRng::new(seed);
+    let mut remaining_articles: Vec<i32> = problem
+        .demands
+        .keys()
+        .copied()
+        .filter(|article| state.remaining_demand(&problem.demands, *article) > 0)
+        .collect();
+    remaining_articles.sort();
+
+    let mut summary = FallbackSummary {
+        rule: "visited box -> visited half-block -> visited aisle -> visited floor -> random"
+            .to_string(),
+        ..FallbackSummary::default()
+    };
+
+    while !remaining_articles.is_empty() {
+        let article = remaining_articles.remove(0);
+        loop {
+            let remaining = state.remaining_demand(&problem.demands, article);
+            if remaining <= 0 {
+                break;
+            }
+
+            let feasible: Vec<usize> = problem
+                .article_to_candidates
+                .get(&article)
+                .ok_or_else(|| format!("missing candidates for article {article}"))?
+                .iter()
+                .copied()
+                .filter(|idx| state.remaining_stock[*idx] > 0)
+                .collect();
+            summary.candidate_evals += feasible.len();
+            if feasible.is_empty() {
+                return Err(format!(
+                    "article {article} still has demand {remaining}, but no feasible stock remains"
+                ));
+            }
+
+            let visited_boxes = visited_box_keys(state, problem);
+            let visited_half_blocks = visited_half_block_keys(state, problem);
+            let visited_aisles = visited_aisle_keys(state, problem);
+            let visited_floors = state.active_floors.clone();
+
+            let mut chosen: Option<usize> = None;
+            for idx in &feasible {
+                if visited_boxes.contains(&box_key(&problem.locs[*idx])) {
+                    chosen = Some(*idx);
+                    summary.visited_box_hits += 1;
+                    break;
+                }
+            }
+            if chosen.is_none() {
+                for idx in &feasible {
+                    if visited_half_blocks.contains(&half_block_key(&problem.locs[*idx])) {
+                        chosen = Some(*idx);
+                        summary.visited_half_block_hits += 1;
+                        break;
+                    }
+                }
+            }
+            if chosen.is_none() {
+                for idx in &feasible {
+                    if visited_aisles.contains(&aisle_key(&problem.locs[*idx])) {
+                        chosen = Some(*idx);
+                        summary.visited_aisle_hits += 1;
+                        break;
+                    }
+                }
+            }
+            if chosen.is_none() {
+                for idx in &feasible {
+                    if visited_floors.contains(&problem.locs[*idx].floor) {
+                        chosen = Some(*idx);
+                        summary.visited_floor_hits += 1;
+                        break;
+                    }
+                }
+            }
+            let chosen_idx = if let Some(idx) = chosen {
+                idx
+            } else {
+                summary.random_hits += 1;
+                feasible[rng.randrange(feasible.len())]
+            };
+
+            let candidate = state
+                .evaluate_candidate(&problem.locs, weights, chosen_idx, remaining)
+                .ok_or_else(|| {
+                    format!("fallback selected infeasible location for article {article}")
+                })?;
+            state.commit(&problem.locs, &candidate)?;
+            summary.steps += 1;
+        }
+        summary.articles += 1;
+    }
+
+    Ok(summary)
+}
+
+fn box_key(loc: &Loc) -> BoxKey {
+    (
+        loc.floor.clone(),
+        loc.aisle,
+        loc.column,
+        loc.shelf,
+        loc.side.clone(),
+    )
+}
+
+fn half_block_key(loc: &Loc) -> HalfBlockKey {
+    (
+        loc.floor.clone(),
+        loc.aisle,
+        if loc.column <= 10 { 1 } else { 2 },
+    )
+}
+
+fn aisle_key(loc: &Loc) -> AisleKey {
+    (loc.floor.clone(), loc.aisle)
+}
+
+fn visited_box_keys(state: &State, problem: &Problem) -> BTreeSet<BoxKey> {
+    state
+        .picks_by_location
+        .iter()
+        .filter(|(_, qty)| **qty > 0)
+        .map(|(idx, _)| box_key(&problem.locs[*idx]))
+        .collect()
+}
+
+fn visited_half_block_keys(state: &State, problem: &Problem) -> BTreeSet<HalfBlockKey> {
+    state
+        .picks_by_location
+        .iter()
+        .filter(|(_, qty)| **qty > 0)
+        .map(|(idx, _)| half_block_key(&problem.locs[*idx]))
+        .collect()
+}
+
+fn visited_aisle_keys(state: &State, problem: &Problem) -> BTreeSet<AisleKey> {
+    state
+        .picks_by_location
+        .iter()
+        .filter(|(_, qty)| **qty > 0)
+        .map(|(idx, _)| aisle_key(&problem.locs[*idx]))
+        .collect()
 }
 
 fn build_solution_from_state(
@@ -2124,6 +2354,7 @@ fn parse_args() -> AppResult<Args> {
         fallback_article_rcl_size: 6,
         fallback_location_rcl_size: 5,
         fallback_seed: 7,
+        fallback_method: "grasp".to_string(),
         cleanup_operator: "2-opt".to_string(),
         cleanup_strategy: "best".to_string(),
         cleanup_passes: 3,
@@ -2175,6 +2406,7 @@ fn parse_args() -> AppResult<Args> {
                 args.fallback_location_rcl_size = parse_usize_arg(flag, &value)?
             }
             "--fallback-seed" => args.fallback_seed = parse_u64_arg(flag, &value)?,
+            "--fallback-method" => args.fallback_method = normalize_fallback_method(&value)?,
             "--cleanup-operator" => args.cleanup_operator = value,
             "--cleanup-strategy" => args.cleanup_strategy = value,
             "--cleanup-passes" => args.cleanup_passes = parse_usize_arg(flag, &value)?,
@@ -2206,6 +2438,17 @@ fn parse_u64_arg(flag: &str, value: &str) -> AppResult<u64> {
     value
         .parse::<u64>()
         .map_err(|err| format!("invalid {flag}: {err}"))
+}
+
+fn normalize_fallback_method(value: &str) -> AppResult<String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('_', "-");
+    match normalized.as_str() {
+        "grasp" => Ok("grasp".to_string()),
+        "visited-area" | "visitedarea" | "visited" | "v2" => Ok("visited-area".to_string()),
+        _ => Err(format!(
+            "invalid --fallback-method '{value}', expected grasp or visited-area"
+        )),
+    }
 }
 
 fn parse_floors(value: &str) -> AppResult<Option<BTreeSet<String>>> {
@@ -2246,6 +2489,7 @@ fn print_help() {
     println!("  --stock PATH");
     println!("  --time-limit SECONDS              0 means unlimited");
     println!("  --fallback-on-time-limit | --no-fallback-on-time-limit");
+    println!("  --fallback-method grasp|visited-area");
     println!("  --cleanup-operator none|2-opt|swap|relocate");
     println!("  --cleanup-strategy best|first");
     println!("  --floors MZN1,MZN2");
