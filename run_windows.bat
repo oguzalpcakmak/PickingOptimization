@@ -75,7 +75,7 @@ if not defined PYTHON_EXE (
 :launcher
 echo Starting Windows solver launcher...
 echo.
-"%PYTHON_EXE%" %PYTHON_ARGS% windows_solver_launcher.py
+"%PYTHON_EXE%" %PYTHON_ARGS% src\windows_solver_launcher.py
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 if not "%EXIT_CODE%"=="0" (

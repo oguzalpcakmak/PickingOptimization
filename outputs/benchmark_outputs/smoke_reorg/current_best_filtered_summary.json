@@ -1,0 +1,53 @@
+{
+  "algorithm": "LK seed for 1-location articles + ascending grouped insertion + open THM shortcut + none cleanup (best)",
+  "orders": "data/full/PickOrder.csv",
+  "stock": "data/full/StockData.csv",
+  "stock_used": "data/full/StockData.csv",
+  "objective_value": 428.48,
+  "distance": 323.48,
+  "floors": 2,
+  "thms": 3,
+  "pick_rows": 3,
+  "visited_nodes": 3,
+  "solve_time": 0.13959012390114367,
+  "cleanup_time": 2.1790852770209312e-05,
+  "phase_times": {
+    "prep_single_location": 7.566716521978378e-05,
+    "lk_seed_route": 0.003021333133801818,
+    "ascending_grouped_phase": 5.037500523030758e-05,
+    "total": 0.13959012390114367,
+    "route_cleanup": 2.1790852770209312e-05
+  },
+  "notes": {
+    "grouping": "1-location prep -> LK route seed -> exact candidate-count groups ascending 2,3,4,...",
+    "open_thm_shortcut": "enabled",
+    "route_cleanup": "none (best)",
+    "lk_seed_floor_times": {
+      "MZN6": 0.003020165953785181
+    },
+    "time_limit_sec": 1.0,
+    "timed_out": false,
+    "timeout_group": null,
+    "timeout_article": null,
+    "fallback_on_time_limit": true,
+    "fallback_used": false,
+    "remaining_articles_before_fallback": 0,
+    "remaining_units_before_fallback": 0,
+    "fast_reuse_steps": 0,
+    "strict_steps": 1,
+    "strict_candidate_evals": 2,
+    "strict_position_evals": 2,
+    "fallback_time": 0.0,
+    "fallback_articles": 0,
+    "fallback_steps": 0,
+    "fallback_candidate_evals": 0,
+    "fallback_seed": 7,
+    "fallback_alpha": 0.25,
+    "fallback_article_rcl_size": 6,
+    "fallback_location_rcl_size": 5,
+    "route_cleanup_operator": "none",
+    "route_cleanup_strategy": "best",
+    "route_cleanup_max_passes": 3,
+    "route_cleanup_time": 2.1790852770209312e-05
+  }
+}

@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.DS_Store
+outputs/python_cache/
+config/api-key.txt
 
 # C extensions
 *.so

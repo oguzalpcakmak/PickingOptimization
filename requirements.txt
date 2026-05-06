@@ -6,8 +6,11 @@
 # - The entries below are for optional exact / research backends that also
 #   live in this repository.
 #
-# Exact / research backend used under APPROACHES_3_backend/
+# Exact / research backend used under external/APPROACHES_3_backend/
 ortools==9.15.6755
+
+# Imported GTSP/TSP research backends under external/
+numpy>=1.26
 
 # Exact MILP model used by gurobi_pick_model.py
 # The Python package can be installed with pip, but solving still requires

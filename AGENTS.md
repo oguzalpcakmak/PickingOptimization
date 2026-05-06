@@ -22,27 +22,27 @@ pip install gurobipy pandas numpy
 
 **GRASP Multi-Start** (best heuristic, ~1-20s):
 ```bash
-.venv/bin/python grasp_heuristic.py \
-  --orders PickOrder.csv \
-  --stock StockData.csv \
+.venv/bin/python src/grasp_heuristic.py \
+  --orders data/full/PickOrder.csv \
+  --stock data/full/StockData.csv \
   --output pick_output.csv \
   --alternative-locations-output alt_output.csv
 ```
 
 **Regret-Based Greedy** (deterministic, very fast ~0.2s):
 ```bash
-.venv/bin/python regret_based_heuristic.py \
-  --orders PickOrder.csv \
-  --stock StockData.csv \
+.venv/bin/python src/regret_based_heuristic.py \
+  --orders data/full/PickOrder.csv \
+  --stock data/full/StockData.csv \
   --output pick_output.csv \
   --alternative-locations-output alt_output.csv
 ```
 
 **Existing Betul Heuristic** (legacy, fast but weaker):
 ```bash
-.venv/bin/python betul-heuristic.py \
-  --orders PickOrder.csv \
-  --stock StockData.csv \
+.venv/bin/python src/betul-heuristic.py \
+  --orders data/full/PickOrder.csv \
+  --stock data/full/StockData.csv \
   --output pick_output.csv \
   --alternative-locations-output alt_output.csv
 ```
@@ -50,18 +50,18 @@ pip install gurobipy pandas numpy
 **THM-Minimization Variants** (prioritize minimizing THM count):
 ```bash
 # RR-style aisle routing
-.venv/bin/python thm_min_rr_heuristic.py --orders ... --stock ...
+.venv/bin/python src/thm_min_rr_heuristic.py --orders ... --stock ...
 
 # S-shape routing
-.venv/bin/python thm_min_s_shape_heuristic.py --orders ... --stock ...
+.venv/bin/python src/thm_min_s_shape_heuristic.py --orders ... --stock ...
 ```
 
 ### Exact Solver (Slow, requires Gurobi license)
 
 ```bash
 ./run_solver.sh \
-  --orders PickOrder.csv \
-  --stock StockData.csv \
+  --orders data/full/PickOrder.csv \
+  --stock data/full/StockData.csv \
   --distance-weight 1 \
   --thm-weight 15 \
   --floor-weight 30 \
@@ -94,13 +94,13 @@ The web app visualizes picking routes from CSV outputs. Upload Excel files with 
 
 ### Python Solvers
 
-- **gurobi_pick_model.py**: Exact MIP model with Gurobi
-- **grasp_heuristic.py**: GRASP multi-start with controlled randomization
-- **regret_based_heuristic.py**: Deterministic regret-based greedy
-- **betul-heuristic.py**: Original heuristic (legacy)
-- **thm_min_rr_heuristic.py**: THM-first with RR-style aisle routing
-- **thm_min_s_shape_heuristic.py**: THM-first with S-shape routing
-- **heuristic_common.py**: Shared utilities (distance calc, route optimization, data loading)
+- **src/gurobi_pick_model.py**: Exact MIP model with Gurobi
+- **src/grasp_heuristic.py**: GRASP multi-start with controlled randomization
+- **src/regret_based_heuristic.py**: Deterministic regret-based greedy
+- **src/betul-heuristic.py**: Original heuristic (legacy)
+- **src/thm_min_rr_heuristic.py**: THM-first with RR-style aisle routing
+- **src/thm_min_s_shape_heuristic.py**: THM-first with S-shape routing
+- **src/heuristic_common.py**: Shared utilities (distance calc, route optimization, data loading)
 
 ### Objective Function
 

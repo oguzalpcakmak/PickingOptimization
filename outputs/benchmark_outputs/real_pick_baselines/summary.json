@@ -1,0 +1,30 @@
+[
+  {
+    "dataset_slug": "old_full_data",
+    "label": "Historical actual operation",
+    "source": "data/real_pick/Grup_Toplama_Verisi_With_PickOrder.csv",
+    "method": "recorded CSV + exact-style cross-floor correction",
+    "objective": 63208.06,
+    "distance": 19483.06,
+    "floors": 6,
+    "thms": 2903,
+    "pick_rows": 6255,
+    "visited_nodes": 1649,
+    "solve_time": 0.018247083062306046,
+    "raw_recorded_distance": 18387.56,
+    "cross_floor_correction": 1095.5
+  },
+  {
+    "dataset_slug": "new_data",
+    "label": "Real pick re-routed baseline",
+    "source": "data/new_data/PickData.csv",
+    "method": "actual selected locations re-routed with shared route builder",
+    "objective": 3514.04,
+    "distance": 1654.04,
+    "floors": 4,
+    "thms": 116,
+    "pick_rows": 196,
+    "visited_nodes": 74,
+    "solve_time": 0.03125100000761449
+  }
+]

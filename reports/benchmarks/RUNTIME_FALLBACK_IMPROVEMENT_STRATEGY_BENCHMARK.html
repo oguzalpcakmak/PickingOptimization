@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+            text-align: left;
+        }
+        tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="first-vs-best-improvement-cleanup-benchmark">First vs Best Improvement Cleanup Benchmark</h1>
+<p>This report compares first-improvement and best-improvement local search on top of the runtime fallback benchmark outputs.</p>
+<p>Allocation is fixed within each runtime setting. Only the final route cleanup strategy changes.</p>
+<p>Definition used here: first improvement applies the first improving move found in scan order; best improvement scans the full neighborhood and applies the best improving move.</p>
+<p>Both strategies are limited to <code>3</code> accepted moves/passes per floor to match the previous cleanup benchmark scale.</p>
+<p>Note: this is a pure first-vs-best comparison. The earlier cleanup benchmark used a greedy pass that updated the route immediately while continuing the scan, so its numbers are not expected to match this table exactly.</p>
+<p>Common objective: <code>distance + 15 * opened THMs + 30 * active floors</code>.</p>
+<h2 id="old-full-data">Old Full Data</h2>
+<ul>
+<li>Orders: <code>PickOrder.csv</code></li>
+<li>Stock: <code>StockData.csv</code></li>
+<li>Solver stock input: <code>StockData.csv</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Runtime setting</th>
+<th>Cleanup</th>
+<th>Strategy</th>
+<th style="text-align:right">Objective</th>
+<th style="text-align:right">Distance</th>
+<th style="text-align:right">Floors</th>
+<th style="text-align:right">THMs</th>
+<th style="text-align:right">Pick rows</th>
+<th style="text-align:right">Visited nodes</th>
+<th style="text-align:center">Cap hit?</th>
+<th style="text-align:right">Fallback units</th>
+<th style="text-align:right">Construction time</th>
+<th style="text-align:right">Cleanup time</th>
+<th style="text-align:right">Total time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">41120.24</td>
+<td style="text-align:right">8135.24</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">123.84s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">41120.24</td>
+<td style="text-align:right">8135.24</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">123.84s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">41052.96</td>
+<td style="text-align:right">8067.96</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">0.42s</td>
+<td style="text-align:right">124.26s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">41048.08</td>
+<td style="text-align:right">8063.08</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">0.67s</td>
+<td style="text-align:right">124.52s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">41094.52</td>
+<td style="text-align:right">8109.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">0.99s</td>
+<td style="text-align:right">124.83s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">41094.52</td>
+<td style="text-align:right">8109.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">1.07s</td>
+<td style="text-align:right">124.91s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">41068.60</td>
+<td style="text-align:right">8083.60</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">1.39s</td>
+<td style="text-align:right">125.23s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">41068.60</td>
+<td style="text-align:right">8083.60</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2187</td>
+<td style="text-align:right">2822</td>
+<td style="text-align:right">820</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">833</td>
+<td style="text-align:right">123.84s</td>
+<td style="text-align:right">1.70s</td>
+<td style="text-align:right">125.54s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">41032.24</td>
+<td style="text-align:right">8152.24</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">200.83s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">41032.24</td>
+<td style="text-align:right">8152.24</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">200.83s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">40934.40</td>
+<td style="text-align:right">8054.40</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.40s</td>
+<td style="text-align:right">201.24s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">40929.52</td>
+<td style="text-align:right">8049.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.69s</td>
+<td style="text-align:right">201.52s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">41006.32</td>
+<td style="text-align:right">8126.32</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.72s</td>
+<td style="text-align:right">201.55s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">41006.32</td>
+<td style="text-align:right">8126.32</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">0.77s</td>
+<td style="text-align:right">201.61s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">40981.76</td>
+<td style="text-align:right">8101.76</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">1.22s</td>
+<td style="text-align:right">202.06s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">40981.76</td>
+<td style="text-align:right">8101.76</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2180</td>
+<td style="text-align:right">2821</td>
+<td style="text-align:right">802</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">200.83s</td>
+<td style="text-align:right">1.51s</td>
+<td style="text-align:right">202.34s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">41146.44</td>
+<td style="text-align:right">8146.44</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">206.23s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">41146.44</td>
+<td style="text-align:right">8146.44</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">206.23s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">41068.28</td>
+<td style="text-align:right">8068.28</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.49s</td>
+<td style="text-align:right">206.73s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">41068.48</td>
+<td style="text-align:right">8068.48</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.61s</td>
+<td style="text-align:right">206.84s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">41120.52</td>
+<td style="text-align:right">8120.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.71s</td>
+<td style="text-align:right">206.94s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">41120.52</td>
+<td style="text-align:right">8120.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">0.80s</td>
+<td style="text-align:right">207.03s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">41101.96</td>
+<td style="text-align:right">8101.96</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">1.28s</td>
+<td style="text-align:right">207.51s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">41101.96</td>
+<td style="text-align:right">8101.96</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">2188</td>
+<td style="text-align:right">2824</td>
+<td style="text-align:right">804</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">206.23s</td>
+<td style="text-align:right">1.55s</td>
+<td style="text-align:right">207.78s</td>
+</tr>
+</tbody>
+</table>
+<p>Best objective in this dataset: <code>5 min cap + GRASP fallback + 2-opt + best improvement</code> with <code>40929.52</code>.</p>
+<h2 id="new-data">New Data</h2>
+<ul>
+<li>Orders: <code>NEW_DATA/OrderData.csv</code></li>
+<li>Stock: <code>NEW_DATA/StockData.csv</code></li>
+<li>Solver stock input: <code>benchmark_outputs/runtime_fallback/new_data/2min/normalized_stock.csv</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Runtime setting</th>
+<th>Cleanup</th>
+<th>Strategy</th>
+<th style="text-align:right">Objective</th>
+<th style="text-align:right">Distance</th>
+<th style="text-align:right">Floors</th>
+<th style="text-align:right">THMs</th>
+<th style="text-align:right">Pick rows</th>
+<th style="text-align:right">Visited nodes</th>
+<th style="text-align:center">Cap hit?</th>
+<th style="text-align:right">Fallback units</th>
+<th style="text-align:right">Construction time</th>
+<th style="text-align:right">Cleanup time</th>
+<th style="text-align:right">Total time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.09s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.09s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.09s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.08s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.09s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.07s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">1897.12</td>
+<td style="text-align:right">967.12</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">54</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">33</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">0.08s</td>
+</tr>
+</tbody>
+</table>
+<p>Best objective in this dataset: <code>2 min cap + GRASP fallback + none + first improvement</code> with <code>1897.12</code>.</p>
+<h2 id="4000-sample">4000 Sample</h2>
+<ul>
+<li>Orders: <code>4000SAMPLE/PickOrder_sample_4000.csv</code></li>
+<li>Stock: <code>4000SAMPLE/StockData.csv</code></li>
+<li>Solver stock input: <code>4000SAMPLE/StockData.csv</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Runtime setting</th>
+<th>Cleanup</th>
+<th>Strategy</th>
+<th style="text-align:right">Objective</th>
+<th style="text-align:right">Distance</th>
+<th style="text-align:right">Floors</th>
+<th style="text-align:right">THMs</th>
+<th style="text-align:right">Pick rows</th>
+<th style="text-align:right">Visited nodes</th>
+<th style="text-align:center">Cap hit?</th>
+<th style="text-align:right">Fallback units</th>
+<th style="text-align:right">Construction time</th>
+<th style="text-align:right">Cleanup time</th>
+<th style="text-align:right">Total time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">32571.60</td>
+<td style="text-align:right">7371.60</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">121.07s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">32571.60</td>
+<td style="text-align:right">7371.60</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">121.07s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">32484.92</td>
+<td style="text-align:right">7284.92</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.29s</td>
+<td style="text-align:right">121.36s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">32458.40</td>
+<td style="text-align:right">7258.40</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.54s</td>
+<td style="text-align:right">121.61s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">32558.44</td>
+<td style="text-align:right">7358.44</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.64s</td>
+<td style="text-align:right">121.72s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">32547.04</td>
+<td style="text-align:right">7347.04</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.64s</td>
+<td style="text-align:right">121.72s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">32509.92</td>
+<td style="text-align:right">7309.92</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">0.91s</td>
+<td style="text-align:right">121.99s</td>
+</tr>
+<tr>
+<td>2 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">32498.52</td>
+<td style="text-align:right">7298.52</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1668</td>
+<td style="text-align:right">2077</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:right">56</td>
+<td style="text-align:right">121.07s</td>
+<td style="text-align:right">1.33s</td>
+<td style="text-align:right">122.40s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">32404.72</td>
+<td style="text-align:right">7309.72</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">129.85s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">32404.72</td>
+<td style="text-align:right">7309.72</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">129.85s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">32361.20</td>
+<td style="text-align:right">7266.20</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.24s</td>
+<td style="text-align:right">130.09s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">32346.68</td>
+<td style="text-align:right">7251.68</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.32s</td>
+<td style="text-align:right">130.16s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">32393.12</td>
+<td style="text-align:right">7298.12</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.44s</td>
+<td style="text-align:right">130.29s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">32393.12</td>
+<td style="text-align:right">7298.12</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.60s</td>
+<td style="text-align:right">130.45s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">32381.72</td>
+<td style="text-align:right">7286.72</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">0.92s</td>
+<td style="text-align:right">130.76s</td>
+</tr>
+<tr>
+<td>5 min cap + GRASP fallback</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">32381.72</td>
+<td style="text-align:right">7286.72</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1661</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">129.85s</td>
+<td style="text-align:right">1.10s</td>
+<td style="text-align:right">130.95s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>first improvement</td>
+<td style="text-align:right">32566.28</td>
+<td style="text-align:right">7351.28</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">132.15s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>none</td>
+<td>best improvement</td>
+<td style="text-align:right">32566.28</td>
+<td style="text-align:right">7351.28</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.00s</td>
+<td style="text-align:right">132.14s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>first improvement</td>
+<td style="text-align:right">32507.28</td>
+<td style="text-align:right">7292.28</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.24s</td>
+<td style="text-align:right">132.39s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>2-opt</td>
+<td>best improvement</td>
+<td style="text-align:right">32501.08</td>
+<td style="text-align:right">7286.08</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.40s</td>
+<td style="text-align:right">132.55s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>first improvement</td>
+<td style="text-align:right">32560.48</td>
+<td style="text-align:right">7345.48</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.47s</td>
+<td style="text-align:right">132.62s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>swap</td>
+<td>best improvement</td>
+<td style="text-align:right">32560.48</td>
+<td style="text-align:right">7345.48</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.48s</td>
+<td style="text-align:right">132.62s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>first improvement</td>
+<td style="text-align:right">32532.08</td>
+<td style="text-align:right">7317.08</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">0.87s</td>
+<td style="text-align:right">133.01s</td>
+</tr>
+<tr>
+<td>Unlimited</td>
+<td>relocate</td>
+<td>best improvement</td>
+<td style="text-align:right">32532.08</td>
+<td style="text-align:right">7317.08</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">1669</td>
+<td style="text-align:right">2076</td>
+<td style="text-align:right">671</td>
+<td style="text-align:center">No</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">132.14s</td>
+<td style="text-align:right">1.12s</td>
+<td style="text-align:right">133.26s</td>
+</tr>
+</tbody>
+</table>
+<p>Best objective in this dataset: <code>5 min cap + GRASP fallback + 2-opt + best improvement</code> with <code>32346.68</code>.</p>
+
+</body>
+</html>

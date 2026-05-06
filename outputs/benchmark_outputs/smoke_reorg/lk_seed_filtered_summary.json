@@ -1,0 +1,54 @@
+{
+  "algorithm": "LK seed for 1-location articles + ascending grouped insertion + open THM shortcut",
+  "objective_value": 428.48,
+  "distance": 323.48,
+  "floors": 2,
+  "thms": 3,
+  "pick_rows": 3,
+  "visited_nodes": 3,
+  "solve_time": 0.14169779093936086,
+  "phase_times": {
+    "prep_single_location": 9.874999523162842e-05,
+    "lk_seed_route": 0.002910209121182561,
+    "ascending_grouped_phase": 5.279085598886013e-05,
+    "total": 0.14169779093936086
+  },
+  "notes": {
+    "grouping": "1-location prep -> LK route seed -> exact candidate-count groups ascending 2,3,4,...",
+    "open_thm_shortcut": "enabled",
+    "route_cleanup": "disabled (no 2-opt)",
+    "lk_seed_floor_times": {
+      "MZN6": 0.0029090000316500664
+    },
+    "time_limit_sec": 1.0,
+    "timed_out": false,
+    "timeout_group": null,
+    "timeout_article": null,
+    "fallback_on_time_limit": false,
+    "fallback_used": false,
+    "remaining_articles_before_fallback": 0,
+    "remaining_units_before_fallback": 0,
+    "fast_reuse_steps": 0,
+    "strict_steps": 1,
+    "strict_candidate_evals": 2,
+    "strict_position_evals": 2,
+    "fallback_time": 0.0,
+    "fallback_articles": 0,
+    "fallback_steps": 0,
+    "fallback_candidate_evals": 0,
+    "fallback_seed": 7,
+    "fallback_alpha": 0.25,
+    "fallback_article_rcl_size": 6,
+    "fallback_location_rcl_size": 5
+  },
+  "distribution": {
+    "1": 2,
+    "2": 1
+  },
+  "completed_by_exact_group": {
+    "2": 1
+  },
+  "group_finish_times_sec": {
+    "2": 0.0
+  }
+}
