@@ -69,12 +69,6 @@ BUDGETS = [
         "time_limit": 300.0,
         "fallback_on_time_limit": True,
     },
-    {
-        "slug": "unlimited",
-        "label": "Unlimited",
-        "time_limit": 0.0,
-        "fallback_on_time_limit": False,
-    },
 ]
 
 CLEANUPS = [
