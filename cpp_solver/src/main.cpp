@@ -127,6 +127,8 @@ struct Args {
     std::string cleanup_operator = "2-opt";
     std::string cleanup_strategy = "best";
     std::size_t cleanup_passes = 3;
+    double cleanup_max_time = 120.0;
+    std::size_t cleanup_fallback_passes = 3;
     std::optional<std::set<std::string>> floors;
     std::optional<std::set<int>> articles;
     fs::path output = "outputs/benchmark_outputs/cpp_current_best/current_best_pick.csv";
@@ -648,25 +650,39 @@ static double relocate_delta(const std::vector<Node>& route, std::size_t source,
     return removal + insert;
 }
 
-static std::vector<Node> cleanup_route_delta(
+struct CleanupStats {
+    std::size_t unique_locations = 0;
+    std::size_t passes_applied = 0;
+};
+
+static std::pair<std::vector<Node>, CleanupStats> cleanup_route_delta(
     const std::vector<Node>& route,
     std::string op,
     const std::string& strategy,
-    std::size_t max_passes
+    std::size_t max_passes,
+    double max_time_seconds,
+    std::size_t fallback_passes,
+    Clock::time_point cleanup_start
 ) {
     std::transform(op.begin(), op.end(), op.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
     std::replace(op.begin(), op.end(), '_', '-');
-    if (op == "none" || op == "noop" || op == "no-op") return route;
+    if (op == "none" || op == "noop" || op == "no-op") return {route, {route.size(), 0}};
     if (op == "two-opt" || op == "2opt") op = "2-opt";
     if (op != "2-opt" && op != "swap" && op != "relocate") throw std::runtime_error("unsupported cleanup operator");
     if (strategy != "first" && strategy != "best") throw std::runtime_error("unsupported cleanup strategy");
 
     auto improved = route;
-    if (improved.size() <= 1 || (op == "2-opt" && improved.size() <= 2)) return improved;
+    if (improved.size() <= 1 || (op == "2-opt" && improved.size() <= 2)) return {improved, {improved.size(), 0}};
+    
+    CleanupStats stats{route.size(), 0};
 
     for (std::size_t pass = 0; pass < max_passes; ++pass) {
+        double elapsed = std::chrono::duration<double>(Clock::now() - cleanup_start).count();
+        if (elapsed >= max_time_seconds && pass >= fallback_passes) {
+            break;
+        }
         bool applied = false;
         std::optional<std::tuple<double, std::size_t, std::size_t>> best_move;
         if (op == "2-opt") {
@@ -740,9 +756,10 @@ static std::vector<Node> cleanup_route_delta(
                 applied = true;
             }
         }
+        if (applied) stats.passes_applied++;
         if (!applied) break;
     }
-    return improved;
+    return {improved, stats};
 }
 
 static std::vector<Node> build_route(const std::set<Node>& nodes, bool use_regret) {
@@ -1293,11 +1310,20 @@ static void cleanup_solution_routes(
     Weights weights,
     const std::string& op,
     const std::string& strategy,
-    std::size_t max_passes
+    std::size_t max_passes,
+    double max_time,
+    std::size_t fallback_passes,
+    Clock::time_point cleanup_start,
+    std::map<std::string, std::string>& notes
 ) {
+    std::size_t total_unique_locations = 0;
+    std::size_t total_passes_applied = 0;
     for (auto& floor : solution.floor_results) {
-        floor.route = cleanup_route_delta(floor.route, op, strategy, max_passes);
+        auto [new_route, stats] = cleanup_route_delta(floor.route, op, strategy, max_passes, max_time, fallback_passes, cleanup_start);
+        floor.route = new_route;
         floor.route_distance = route_cost(floor.route);
+        total_unique_locations += stats.unique_locations;
+        total_passes_applied += stats.passes_applied;
     }
     std::set<std::string> all_thms;
     solution.total_distance = 0.0;
@@ -1319,6 +1345,8 @@ static void cleanup_solution_routes(
     solution.objective = weights.distance * solution.total_distance + weights.thm * solution.total_thms +
                          weights.floor * solution.total_floors;
     solution.algorithm += ", " + op + " cleanup (" + strategy + ")";
+    notes["cleanup_unique_locations"] = std::to_string(total_unique_locations);
+    notes["cleanup_passes_applied"] = std::to_string(total_passes_applied);
 }
 
 static std::pair<Solution, std::map<std::string, std::string>> solve_current_best(
@@ -1765,6 +1793,8 @@ static void print_help() {
     std::cout << "  --fallback-method grasp|visited-area\n";
     std::cout << "  --cleanup-operator none|2-opt|swap|relocate\n";
     std::cout << "  --cleanup-strategy best|first\n";
+    std::cout << "  --cleanup-max-time SECONDS        Max time for cleanup (default 120.0)\n";
+    std::cout << "  --cleanup-fallback-passes N       Fallback passes when time exceeded (default 3)\n";
     std::cout << "  --floors MZN1,MZN2\n";
     std::cout << "  --articles 88,150,258\n";
     std::cout << "  --output PATH\n";
@@ -1806,6 +1836,8 @@ static Args parse_args(int argc, char** argv) {
         else if (flag == "--cleanup-operator") args.cleanup_operator = value;
         else if (flag == "--cleanup-strategy") args.cleanup_strategy = value;
         else if (flag == "--cleanup-passes") args.cleanup_passes = static_cast<std::size_t>(std::stoull(value));
+        else if (flag == "--cleanup-max-time") args.cleanup_max_time = std::stod(value);
+        else if (flag == "--cleanup-fallback-passes") args.cleanup_fallback_passes = static_cast<std::size_t>(std::stoull(value));
         else if (flag == "--floors") args.floors = parse_floors(value);
         else if (flag == "--articles") args.articles = parse_articles(value);
         else if (flag == "--output") args.output = value;
@@ -1829,7 +1861,7 @@ int main(int argc, char** argv) {
         auto [solution, notes] = solve_current_best(problem, weights, deadline, args, started);
 
         auto cleanup_start = Clock::now();
-        cleanup_solution_routes(solution, problem.locs, weights, args.cleanup_operator, args.cleanup_strategy, args.cleanup_passes);
+        cleanup_solution_routes(solution, problem.locs, weights, args.cleanup_operator, args.cleanup_strategy, args.cleanup_passes, args.cleanup_max_time, args.cleanup_fallback_passes, cleanup_start, notes);
         double cleanup_time = std::chrono::duration<double>(Clock::now() - cleanup_start).count();
         solution.solve_time = std::chrono::duration<double>(Clock::now() - started).count();
         notes["route_cleanup"] = args.cleanup_operator + " (" + args.cleanup_strategy + ")";

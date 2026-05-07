@@ -46,10 +46,11 @@ BUDGETS = [
 ]
 
 CLEANUPS = [
-    ("none", "none"),
-    ("two_opt", "2-opt"),
-    ("swap", "swap"),
-    ("relocate", "relocate"),
+    ("none", "none", 1),
+    ("two_opt", "2-opt", 3),
+    ("two_opt_unlimited_2m", "2-opt", 1000000),
+    ("swap", "swap", 3),
+    ("relocate", "relocate", 3),
 ]
 
 STRATEGIES = [
@@ -119,6 +120,7 @@ def run_case(
     budget: dict[str, Any],
     cleanup_slug: str,
     cleanup_operator: str,
+    cleanup_passes: int,
     strategy_slug: str,
     strategy_label: str,
     fallback_method: str,
@@ -145,6 +147,10 @@ def run_case(
         cleanup_operator,
         "--cleanup-strategy",
         strategy_slug,
+        "--cleanup-passes",
+        str(cleanup_passes),
+        "--cleanup-max-time",
+        "120.0",
         "--output",
         str(pick_output),
         "--alternative-locations-output",
@@ -197,6 +203,9 @@ def run_case(
         "strict_candidate_evals": _int_note(notes, "strict_candidate_evals"),
         "strict_position_evals": _int_note(notes, "strict_position_evals"),
         "fallback_steps": _int_note(notes, "fallback_steps"),
+        "cleanup_passes_requested": cleanup_passes,
+        "cleanup_passes_applied": _int_note(notes, "cleanup_passes_applied"),
+        "cleanup_unique_locations": _int_note(notes, "cleanup_unique_locations"),
         "pick_output": str(pick_output),
         "alt_output": str(alt_output),
         "summary_output": str(summary_output),
@@ -265,14 +274,14 @@ def write_report(rows: list[dict[str, Any]], report_path: Path) -> None:
                 f"- Orders: `{dataset['orders']}`",
                 f"- Stock: `{dataset['stock']}`",
                 "",
-                "| Runtime setting | Cleanup | Strategy | Objective | Distance | Floors | THMs | Pick rows | Visited nodes | Cap hit? | Fallback units | Strict evals | Position evals | Construction time | Cleanup time | Total time |",
-                "|---|---|---|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|---:|---:|",
+                "| Runtime setting | Cleanup | Strategy | Objective | Distance | Floors | THMs | Pick rows | Visited nodes | Cleanup locations | Cleanup passes | Cap hit? | Fallback units | Strict evals | Position evals | Construction time | Cleanup time | Total time |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in dataset_rows:
             cap_hit = "Yes" if row["timed_out"] else "No"
             lines.append(
-                "| {budget} | {cleanup} | {strategy} | {objective:.2f} | {distance:.2f} | {floors} | {thms} | {pick_rows} | {visited_nodes} | {cap_hit} | {remaining_units_before_fallback} | {strict_candidate_evals} | {strict_position_evals} | {construction_time:.4f}s | {cleanup_time:.4f}s | {solve_time:.4f}s |".format(
+                "| {budget} | {cleanup} | {strategy} | {objective:.2f} | {distance:.2f} | {floors} | {thms} | {pick_rows} | {visited_nodes} | {cleanup_unique_locations} | {cleanup_passes_applied}/{cleanup_passes_requested} | {cap_hit} | {remaining_units_before_fallback} | {strict_candidate_evals} | {strict_position_evals} | {construction_time:.4f}s | {cleanup_time:.4f}s | {solve_time:.4f}s |".format(
                     **row,
                     cap_hit=cap_hit,
                 )
@@ -347,7 +356,7 @@ def main() -> int:
         for budget in BUDGETS:
             if selected_budgets and budget["slug"] not in selected_budgets:
                 continue
-            for cleanup_slug, cleanup_operator in CLEANUPS:
+            for cleanup_slug, cleanup_operator, cleanup_passes in CLEANUPS:
                 if selected_cleanups and cleanup_slug not in selected_cleanups:
                     continue
                 for strategy_slug, strategy_label in STRATEGIES:
@@ -364,6 +373,7 @@ def main() -> int:
                             budget=budget,
                             cleanup_slug=cleanup_slug,
                             cleanup_operator=cleanup_operator,
+                            cleanup_passes=cleanup_passes,
                             strategy_slug=strategy_slug,
                             strategy_label=strategy_label,
                             fallback_method=args.fallback_method,

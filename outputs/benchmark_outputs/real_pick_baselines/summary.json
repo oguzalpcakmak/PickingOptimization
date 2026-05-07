@@ -10,7 +10,7 @@
     "thms": 2903,
     "pick_rows": 6255,
     "visited_nodes": 1649,
-    "solve_time": 0.018247083062306046,
+    "solve_time": 0.019487374927848577,
     "raw_recorded_distance": 18387.56,
     "cross_floor_correction": 1095.5
   },
@@ -25,6 +25,6 @@
     "thms": 116,
     "pick_rows": 196,
     "visited_nodes": 74,
-    "solve_time": 0.03125100000761449
+    "solve_time": 0.03129899990744889
   }
 ]
