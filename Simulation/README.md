@@ -25,6 +25,7 @@ Toplama süreci verilerini kullanarak depo içi toplama süreçlerini görselle�
 - 🌐 **Çoklu Dil Desteği**: Türkçe ve İngilizce
 - ⬇️ **Excel Çıktısı**: İşlenmiş verileri Excel formatında indirebilme
 - 🧪 **Test Verisi**: Hızlı test için gömülü örnek veri
+- ⚙️ **C++ Solver Entegrasyonu**: Aynı Excel dosyasındaki pick ve stok sheet'lerinden optimize rota üretebilme
 
 ### 🏗️ Depo Layout Parametreleri
 
@@ -40,6 +41,7 @@ Toplama süreci verilerini kullanarak depo içi toplama süreçlerini görselle�
 ### 📥 Excel Dosyası Formatı
 
 Yüklenen Excel dosyasında **"Grup Toplama Verisi"** isimli bir sayfa (sheet) bulunmalıdır.
+C++ solver çalıştırmak için aynı dosyada ayrıca **"Stok Bilgisi"** sheet'i bulunmalıdır.
 
 #### Gerekli Kolonlar
 
@@ -56,6 +58,19 @@ Yüklenen Excel dosyasında **"Grup Toplama Verisi"** isimli bir sayfa (sheet) b
 | `Y` | Raf numarası |
 | `Z` | Sol/Sağ (L/R) |
 | `TOPLANAN_ADET` | Toplanan adet |
+
+#### C++ Solver Stok Sheet Kolonları
+
+| Kolon Adı | Açıklama |
+|-----------|----------|
+| `THM_ID` | Stok THM numarası |
+| `ARTICLE_CODE` | Ürün kodu |
+| `ACT_AREA` | Alan kodu (MZN1-MZN6) |
+| `ACT_AISLE` | Koridor numarası |
+| `ACT_X` | Sütun numarası |
+| `ACT_Y` | Raf numarası |
+| `ACT_Z` | Sol/Sağ (L/R) |
+| `Stok` | Mevcut stok |
 
 ### 🚀 Kurulum
 
@@ -81,6 +96,25 @@ npm run dev
 ```
 
 Uygulama varsayılan olarak `http://localhost:5173` adresinde çalışacaktır.
+
+#### C++ Solver API ile çalıştırma
+
+```bash
+# Terminal 1: API
+npm run api
+
+# Terminal 2: Vite UI
+npm run dev
+```
+
+API varsayılan olarak `http://localhost:5174` üzerinde çalışır ve Vite `/api` isteklerini buraya proxy eder. Production için:
+
+```bash
+npm run build
+npm start
+```
+
+Server varsayılan olarak `../cpp_solver/build/picking_current_best_cpp` binary'sini ve `../external/LKH-3.0.14/LKH` LKH binary'sini kullanır. Farklı path gerekiyorsa `CPP_SOLVER_PATH` ve `LKH_PATH` environment variable'ları verilebilir.
 
 ### 📦 Üretim Derlemesi
 
@@ -121,6 +155,7 @@ A web application that visualizes warehouse picking processes using picking data
 - 🌐 **Multi-language Support**: Turkish and English
 - ⬇️ **Excel Export**: Download processed data in Excel format
 - 🧪 **Test Data**: Embedded sample data for quick testing
+- ⚙️ **C++ Solver Integration**: Generate optimized routes from pick and stock sheets in the same Excel file
 
 ### 🏗️ Warehouse Layout Parameters
 
@@ -136,6 +171,7 @@ A web application that visualizes warehouse picking processes using picking data
 ### 📥 Excel File Format
 
 The uploaded Excel file must contain a sheet named **"Grup Toplama Verisi"**.
+Running the C++ solver also requires a **"Stok Bilgisi"** sheet in the same workbook.
 
 #### Required Columns
 
@@ -152,6 +188,19 @@ The uploaded Excel file must contain a sheet named **"Grup Toplama Verisi"**.
 | `Y` | Shelf number |
 | `Z` | Left/Right (L/R) |
 | `TOPLANAN_ADET` | Picked quantity |
+
+#### C++ Solver Stock Sheet Columns
+
+| Column Name | Description |
+|-------------|-------------|
+| `THM_ID` | Stock THM id |
+| `ARTICLE_CODE` | Product code |
+| `ACT_AREA` | Area code (MZN1-MZN6) |
+| `ACT_AISLE` | Aisle number |
+| `ACT_X` | Column number |
+| `ACT_Y` | Shelf number |
+| `ACT_Z` | Left/Right (L/R) |
+| `Stok` | Available stock |
 
 ### 🚀 Installation
 
@@ -177,6 +226,25 @@ npm run dev
 ```
 
 The application will run at `http://localhost:5173` by default.
+
+#### Running with the C++ Solver API
+
+```bash
+# Terminal 1: API
+npm run api
+
+# Terminal 2: Vite UI
+npm run dev
+```
+
+The API runs at `http://localhost:5174` by default, and Vite proxies `/api` requests to it. For production:
+
+```bash
+npm run build
+npm start
+```
+
+By default the server uses `../cpp_solver/build/picking_current_best_cpp` and `../external/LKH-3.0.14/LKH`. Override them with `CPP_SOLVER_PATH` and `LKH_PATH` when hosting on another machine.
 
 ### 📦 Production Build
 
@@ -227,6 +295,8 @@ WarehouseSimulation/
 │   ├── App.jsx                   # Main application component
 │   ├── main.jsx                  # React entry point
 │   └── index.css                 # Global styles
+├── server/
+│   └── index.js                  # C++ solver API
 ├── index.html
 ├── package.json
 └── vite.config.js

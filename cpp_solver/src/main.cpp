@@ -124,6 +124,14 @@ struct Args {
     std::size_t fallback_location_rcl_size = 5;
     std::uint64_t fallback_seed = 7;
     std::string fallback_method = "grasp";
+    std::string seed_route_optimizer = "lkh";
+    fs::path lkh_path;
+    int lkh_precision = 1000;
+    int lkh_runs = 1;
+    int lkh_seed = 1;
+    int lkh_max_trials = 0;
+    std::size_t candidate_group_width = 2;
+    std::string article_selection = "grouped";
     std::string cleanup_operator = "2-opt";
     std::string cleanup_strategy = "best";
     std::size_t cleanup_passes = 3;
@@ -829,6 +837,203 @@ static std::vector<Node> two_opt_route(std::vector<Node> route, std::size_t max_
     return route;
 }
 
+static std::string safe_token(std::string value) {
+    for (char& ch : value) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_') ch = '_';
+    }
+    if (value.empty()) value = "route";
+    return value;
+}
+
+static std::string shell_quote(const fs::path& path) {
+    std::string text = path.string();
+    std::string quoted = "'";
+    for (char ch : text) {
+        if (ch == '\'') quoted += "'\\''";
+        else quoted += ch;
+    }
+    quoted += "'";
+    return quoted;
+}
+
+static fs::path resolve_lkh_path(const fs::path& requested) {
+    std::vector<fs::path> candidates;
+    if (!requested.empty()) {
+        candidates.push_back(requested);
+    } else {
+        candidates.push_back("external/LKH-3.0.14/LKH");
+        candidates.push_back("../external/LKH-3.0.14/LKH");
+        candidates.push_back("../../external/LKH-3.0.14/LKH");
+        candidates.push_back("LKH");
+    }
+
+    for (const auto& candidate : candidates) {
+        fs::path path = candidate.is_absolute() ? candidate : fs::current_path() / candidate;
+        if (fs::exists(path) && !fs::is_directory(path)) return fs::absolute(path);
+    }
+
+    std::ostringstream message;
+    message << "LKH executable not found. Use --lkh-path PATH or install it under external/LKH-3.0.14/LKH.";
+    throw std::runtime_error(message.str());
+}
+
+static fs::path make_lkh_work_dir(const std::string& floor) {
+    auto base = fs::temp_directory_path();
+    auto tick = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    Clock::now().time_since_epoch()
+                )
+                    .count();
+    std::string prefix = "picking_lkh_" + safe_token(floor) + "_" + std::to_string(tick);
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        fs::path path = base / (prefix + "_" + std::to_string(attempt));
+        std::error_code ec;
+        if (fs::create_directory(path, ec)) return path;
+    }
+    throw std::runtime_error("failed to create temporary LKH work directory");
+}
+
+static long long scaled_lkh_distance(double distance, int precision) {
+    precision = std::max(1, precision);
+    return std::max(0LL, static_cast<long long>(std::llround(distance * precision)));
+}
+
+static void write_lkh_tsp(
+    const std::vector<Node>& nodes,
+    const fs::path& tsp_path,
+    const std::string& name,
+    int precision
+) {
+    std::ofstream file(tsp_path);
+    if (!file) throw std::runtime_error("failed to write LKH problem file " + tsp_path.string());
+    std::size_t dimension = nodes.size() + 1;
+    file << "NAME: " << safe_token(name) << "\n";
+    file << "TYPE: TSP\n";
+    file << "DIMENSION: " << dimension << "\n";
+    file << "EDGE_WEIGHT_TYPE: EXPLICIT\n";
+    file << "EDGE_WEIGHT_FORMAT: FULL_MATRIX\n";
+    file << "EDGE_WEIGHT_SECTION\n";
+    for (std::size_t row = 0; row < dimension; ++row) {
+        for (std::size_t col = 0; col < dimension; ++col) {
+            double distance = 0.0;
+            if (row != col) {
+                if (row == 0) {
+                    distance = entry_exit_distance(nodes[col - 1]);
+                } else if (col == 0) {
+                    distance = entry_exit_distance(nodes[row - 1]);
+                } else {
+                    distance = same_floor_distance(nodes[row - 1], nodes[col - 1]);
+                }
+            }
+            if (col > 0) file << ' ';
+            file << scaled_lkh_distance(distance, precision);
+        }
+        file << '\n';
+    }
+    file << "EOF\n";
+}
+
+static void write_lkh_par(
+    const fs::path& par_path,
+    const fs::path& tsp_path,
+    const fs::path& tour_path,
+    const Args& args,
+    std::size_t node_count
+) {
+    std::ofstream file(par_path);
+    if (!file) throw std::runtime_error("failed to write LKH parameter file " + par_path.string());
+    file << "PROBLEM_FILE = " << tsp_path.string() << "\n";
+    file << "TOUR_FILE = " << tour_path.string() << "\n";
+    file << "RUNS = " << std::max(1, args.lkh_runs) << "\n";
+    file << "SEED = " << args.lkh_seed << "\n";
+    file << "TRACE_LEVEL = 0\n";
+    file << "MOVE_TYPE = 5\n";
+    file << "PATCHING_C = 3\n";
+    file << "PATCHING_A = 2\n";
+    if (args.lkh_max_trials > 0) {
+        file << "MAX_TRIALS = " << args.lkh_max_trials << "\n";
+    } else {
+        file << "MAX_TRIALS = " << std::max<std::size_t>(100, node_count) << "\n";
+    }
+}
+
+static std::vector<int> read_lkh_tour_ids(const fs::path& tour_path) {
+    std::ifstream file(tour_path);
+    if (!file) throw std::runtime_error("failed to read LKH tour file " + tour_path.string());
+    std::vector<int> ids;
+    std::string token;
+    bool in_tour_section = false;
+    while (file >> token) {
+        if (token == "TOUR_SECTION") {
+            in_tour_section = true;
+            continue;
+        }
+        if (!in_tour_section) continue;
+        if (token == "EOF") break;
+        int id = 0;
+        try {
+            id = std::stoi(token);
+        } catch (...) {
+            continue;
+        }
+        if (id == -1) break;
+        ids.push_back(id);
+    }
+    return ids;
+}
+
+static std::vector<Node> parse_lkh_route(const fs::path& tour_path, const std::vector<Node>& nodes) {
+    auto ids = read_lkh_tour_ids(tour_path);
+    if (ids.size() != nodes.size() + 1) {
+        throw std::runtime_error("LKH tour has unexpected dimension in " + tour_path.string());
+    }
+    auto depot_it = std::find(ids.begin(), ids.end(), 1);
+    if (depot_it == ids.end()) throw std::runtime_error("LKH tour is missing the depot node");
+    std::size_t depot_index = static_cast<std::size_t>(std::distance(ids.begin(), depot_it));
+
+    std::vector<Node> route;
+    std::set<int> seen;
+    for (std::size_t step = 1; step < ids.size(); ++step) {
+        int id = ids[(depot_index + step) % ids.size()];
+        if (id == 1) break;
+        if (id < 2 || static_cast<std::size_t>(id - 2) >= nodes.size()) {
+            throw std::runtime_error("LKH tour contains an invalid node id");
+        }
+        if (!seen.insert(id).second) throw std::runtime_error("LKH tour contains a duplicate node id");
+        route.push_back(nodes[static_cast<std::size_t>(id - 2)]);
+    }
+    if (route.size() != nodes.size()) throw std::runtime_error("LKH route did not visit every warehouse node");
+    return route;
+}
+
+static std::vector<Node> build_lkh_seed_route(
+    const std::set<Node>& node_set,
+    const std::string& floor,
+    const Args& args,
+    const fs::path& lkh_path
+) {
+    std::vector<Node> nodes(node_set.begin(), node_set.end());
+    if (nodes.size() <= 1) return nodes;
+
+    fs::path work_dir = make_lkh_work_dir(floor);
+    fs::path tsp_path = work_dir / "seed.tsp";
+    fs::path par_path = work_dir / "seed.par";
+    fs::path tour_path = work_dir / "seed.tour";
+    fs::path log_path = work_dir / "lkh.log";
+
+    write_lkh_tsp(nodes, tsp_path, "warehouse_seed_" + floor, args.lkh_precision);
+    write_lkh_par(par_path, tsp_path, tour_path, args, nodes.size());
+    std::string command = shell_quote(lkh_path) + " " + shell_quote(par_path) + " > " +
+                          shell_quote(log_path) + " 2>&1";
+    int rc = std::system(command.c_str());
+    if (rc != 0) {
+        throw std::runtime_error("LKH failed for " + floor + "; see " + log_path.string());
+    }
+    auto route = parse_lkh_route(tour_path, nodes);
+    std::error_code ignored;
+    fs::remove_all(work_dir, ignored);
+    return route;
+}
+
 static std::vector<Node> seed_route_from_hint(const std::set<Node>& nodes, const std::vector<Node>& hint) {
     std::vector<Node> route;
     std::set<Node> seen;
@@ -1375,14 +1580,23 @@ static std::pair<Solution, std::map<std::string, std::string>> solve_current_bes
     double prep_elapsed = std::chrono::duration<double>(Clock::now() - prep_start).count();
 
     auto seed_start = Clock::now();
+    std::optional<fs::path> resolved_lkh_path;
+    if (args.seed_route_optimizer == "lkh") resolved_lkh_path = resolve_lkh_path(args.lkh_path);
     std::vector<std::string> seed_floors;
     for (const auto& [floor, nodes] : state.active_nodes_by_floor) {
         (void)nodes;
         seed_floors.push_back(floor);
     }
     for (const auto& floor : seed_floors) {
-        auto route = build_route(state.active_nodes_by_floor[floor], true);
-        route = two_opt_route(route, 3);
+        std::vector<Node> route;
+        if (args.seed_route_optimizer == "lkh") {
+            route = build_lkh_seed_route(state.active_nodes_by_floor[floor], floor, args, *resolved_lkh_path);
+        } else if (args.seed_route_optimizer == "cpp") {
+            route = build_route(state.active_nodes_by_floor[floor], true);
+            route = two_opt_route(route, 3);
+        } else {
+            throw std::runtime_error("unsupported seed route optimizer");
+        }
         state.route_by_floor[floor] = route;
         state.route_cost_by_floor[floor] = route_cost(route);
     }
@@ -1391,76 +1605,167 @@ static std::pair<Solution, std::map<std::string, std::string>> solve_current_bes
     auto grouped_start = Clock::now();
     bool timed_out = false;
     std::size_t timeout_group = 0;
+    std::size_t timeout_group_end = 0;
     int timeout_article = 0;
     std::size_t fast_reuse_steps = 0;
     std::size_t strict_steps = 0;
     std::size_t strict_candidate_evals = 0;
     std::size_t strict_position_evals = 0;
 
-    std::map<std::size_t, std::vector<int>> groups;
-    for (const auto& [article, count] : counts) {
-        if (count >= 2) groups[count].push_back(article);
-    }
-
-    bool break_groups = false;
-    for (const auto& [group_size, articles] : groups) {
-        for (int article : articles) {
-            int remaining = state.remaining_demand(problem.demands, article);
-            while (remaining > 0) {
-                if (deadline && Clock::now() >= *deadline) {
-                    timed_out = true;
-                    timeout_group = group_size;
-                    timeout_article = article;
-                    break_groups = true;
-                    break;
-                }
-                std::vector<std::size_t> feasible;
+    std::size_t group_width = std::max<std::size_t>(1, args.candidate_group_width);
+    if (args.article_selection == "global-cheapest") {
+        while (true) {
+            if (deadline && Clock::now() >= *deadline) {
+                timed_out = true;
+                break;
+            }
+            bool any_remaining = false;
+            std::optional<Candidate> best_candidate;
+            for (const auto& [article, demand] : problem.demands) {
+                (void)demand;
+                int remaining = state.remaining_demand(problem.demands, article);
+                if (remaining <= 0) continue;
+                any_remaining = true;
                 for (auto idx : problem.article_to_candidates.at(article)) {
-                    if (state.remaining_stock[idx] > 0) feasible.push_back(idx);
-                }
-                std::vector<std::size_t> open_thm_locs;
-                for (auto idx : feasible) {
-                    if (state.active_thms.count(problem.locs[idx].thm_id)) open_thm_locs.push_back(idx);
-                }
-                if (!open_thm_locs.empty()) {
-                    std::vector<Candidate> scored;
-                    for (auto idx : open_thm_locs) {
-                        auto candidate = state.evaluate_candidate(problem.locs, weights, idx, remaining);
-                        if (candidate) scored.push_back(*candidate);
-                    }
-                    std::sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
-                        return candidate_less(a, b, problem.locs);
-                    });
-                    if (scored.empty()) throw std::runtime_error("open-THM candidate disappeared");
-                    Candidate best = scored.front();
-                    remaining -= best.take;
-                    state.commit(problem.locs, best);
-                    fast_reuse_steps++;
-                    continue;
-                }
-
-                std::vector<Candidate> scored;
-                for (auto idx : feasible) {
+                    if (state.remaining_stock[idx] <= 0) continue;
                     strict_candidate_evals++;
                     const auto& loc = problem.locs[idx];
                     std::size_t route_len = state.route_by_floor.count(loc.floor) ? state.route_by_floor[loc.floor].size() : 0;
                     bool is_new_node = state.active_nodes_by_floor[loc.floor].count(loc.node()) == 0;
                     if (is_new_node) strict_position_evals += route_len + 1;
                     auto candidate = state.evaluate_candidate_strict(problem.locs, weights, idx, remaining);
-                    if (candidate) scored.push_back(*candidate);
+                    if (candidate && (!best_candidate || candidate_less(*candidate, *best_candidate, problem.locs))) {
+                        best_candidate = *candidate;
+                    }
                 }
-                if (scored.empty()) throw std::runtime_error("no feasible strict candidate");
-                std::sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
-                    return candidate_less(a, b, problem.locs);
-                });
-                Candidate best = scored.front();
-                remaining -= best.take;
-                state.commit(problem.locs, best);
+            }
+            if (!any_remaining) break;
+            if (!best_candidate) throw std::runtime_error("no feasible global strict candidate");
+            state.commit(problem.locs, *best_candidate);
+            strict_steps++;
+        }
+    } else if (args.article_selection == "bucket-cheapest") {
+        std::map<std::size_t, std::vector<int>> groups;
+        for (const auto& [article, count] : counts) {
+            if (count >= 2) {
+                std::size_t group_start = 2 + ((count - 2) / group_width) * group_width;
+                groups[group_start].push_back(article);
+            }
+        }
+
+        bool break_groups = false;
+        for (const auto& [group_start, articles] : groups) {
+            std::size_t group_end = group_start + group_width - 1;
+            while (true) {
+                if (deadline && Clock::now() >= *deadline) {
+                    timed_out = true;
+                    timeout_group = group_start;
+                    timeout_group_end = group_end;
+                    break_groups = true;
+                    break;
+                }
+                bool any_remaining = false;
+                std::optional<Candidate> best_candidate;
+                int best_article = 0;
+                for (int article : articles) {
+                    int remaining = state.remaining_demand(problem.demands, article);
+                    if (remaining <= 0) continue;
+                    any_remaining = true;
+                    for (auto idx : problem.article_to_candidates.at(article)) {
+                        if (state.remaining_stock[idx] <= 0) continue;
+                        strict_candidate_evals++;
+                        const auto& loc = problem.locs[idx];
+                        std::size_t route_len = state.route_by_floor.count(loc.floor) ? state.route_by_floor[loc.floor].size() : 0;
+                        bool is_new_node = state.active_nodes_by_floor[loc.floor].count(loc.node()) == 0;
+                        if (is_new_node) strict_position_evals += route_len + 1;
+                        auto candidate = state.evaluate_candidate_strict(problem.locs, weights, idx, remaining);
+                        if (candidate && (!best_candidate || candidate_less(*candidate, *best_candidate, problem.locs))) {
+                            best_candidate = *candidate;
+                            best_article = article;
+                        }
+                    }
+                }
+                if (!any_remaining) break;
+                if (!best_candidate) throw std::runtime_error("no feasible bucket strict candidate");
+                timeout_article = best_article;
+                state.commit(problem.locs, *best_candidate);
                 strict_steps++;
             }
             if (break_groups) break;
         }
-        if (break_groups) break;
+    } else if (args.article_selection == "grouped") {
+        std::map<std::size_t, std::vector<int>> groups;
+        for (const auto& [article, count] : counts) {
+            if (count >= 2) {
+                std::size_t group_start = 2 + ((count - 2) / group_width) * group_width;
+                groups[group_start].push_back(article);
+            }
+        }
+
+        bool break_groups = false;
+        for (const auto& [group_start, articles] : groups) {
+            std::size_t group_end = group_start + group_width - 1;
+            for (int article : articles) {
+                int remaining = state.remaining_demand(problem.demands, article);
+                while (remaining > 0) {
+                    if (deadline && Clock::now() >= *deadline) {
+                        timed_out = true;
+                        timeout_group = group_start;
+                        timeout_group_end = group_end;
+                        timeout_article = article;
+                        break_groups = true;
+                        break;
+                    }
+                    std::vector<std::size_t> feasible;
+                    for (auto idx : problem.article_to_candidates.at(article)) {
+                        if (state.remaining_stock[idx] > 0) feasible.push_back(idx);
+                    }
+                    std::vector<std::size_t> open_thm_locs;
+                    for (auto idx : feasible) {
+                        if (state.active_thms.count(problem.locs[idx].thm_id)) open_thm_locs.push_back(idx);
+                    }
+                    if (!open_thm_locs.empty()) {
+                        std::vector<Candidate> scored;
+                        for (auto idx : open_thm_locs) {
+                            auto candidate = state.evaluate_candidate(problem.locs, weights, idx, remaining);
+                            if (candidate) scored.push_back(*candidate);
+                        }
+                        std::sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
+                            return candidate_less(a, b, problem.locs);
+                        });
+                        if (scored.empty()) throw std::runtime_error("open-THM candidate disappeared");
+                        Candidate best = scored.front();
+                        remaining -= best.take;
+                        state.commit(problem.locs, best);
+                        fast_reuse_steps++;
+                        continue;
+                    }
+
+                    std::vector<Candidate> scored;
+                    for (auto idx : feasible) {
+                        strict_candidate_evals++;
+                        const auto& loc = problem.locs[idx];
+                        std::size_t route_len = state.route_by_floor.count(loc.floor) ? state.route_by_floor[loc.floor].size() : 0;
+                        bool is_new_node = state.active_nodes_by_floor[loc.floor].count(loc.node()) == 0;
+                        if (is_new_node) strict_position_evals += route_len + 1;
+                        auto candidate = state.evaluate_candidate_strict(problem.locs, weights, idx, remaining);
+                        if (candidate) scored.push_back(*candidate);
+                    }
+                    if (scored.empty()) throw std::runtime_error("no feasible strict candidate");
+                    std::sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
+                        return candidate_less(a, b, problem.locs);
+                    });
+                    Candidate best = scored.front();
+                    remaining -= best.take;
+                    state.commit(problem.locs, best);
+                    strict_steps++;
+                }
+                if (break_groups) break;
+            }
+            if (break_groups) break;
+        }
+    } else {
+        throw std::runtime_error("unsupported article selection mode");
     }
 
     std::map<int, int> remaining_before_fallback;
@@ -1494,10 +1799,23 @@ static std::pair<Solution, std::map<std::string, std::string>> solve_current_bes
         out << value;
         notes[key] = out.str();
     };
-    put("seed_route", "pure C++ regret insertion + 2-opt (LK package not used)");
+    put("seed_route_optimizer", args.seed_route_optimizer);
+    put("seed_route",
+        args.seed_route_optimizer == "lkh"
+            ? "LKH-3 explicit full-matrix depot cycle"
+            : "pure C++ regret insertion + 2-opt (LKH not used)");
+    if (resolved_lkh_path) {
+        put("lkh_path", resolved_lkh_path->string());
+        put("lkh_precision", args.lkh_precision);
+        put("lkh_runs", args.lkh_runs);
+        put("lkh_max_trials", args.lkh_max_trials > 0 ? args.lkh_max_trials : 0);
+    }
     put("time_limit_sec", args.time_limit);
     put("timed_out", timed_out ? "true" : "false");
+    put("article_selection", args.article_selection);
+    put("candidate_group_width", group_width);
     put("timeout_group", timeout_group);
+    put("timeout_group_end", timeout_group_end);
     put("timeout_article", timeout_article);
     put("fallback_on_time_limit", args.fallback_on_time_limit ? "true" : "false");
     put("fallback_used", (timed_out && args.fallback_on_time_limit) ? "true" : "false");
@@ -1527,8 +1845,13 @@ static std::pair<Solution, std::map<std::string, std::string>> solve_current_bes
     put("ascending_grouped_phase_sec", fixed6(std::chrono::duration<double>(Clock::now() - grouped_start).count()));
 
     std::string fallback_label = args.fallback_method == "visited-area" ? "visited-area fallback" : "GRASP fallback";
+    std::string selection_label = args.article_selection == "global-cheapest"
+                                      ? "global strict cheapest insertion"
+                                      : (args.article_selection == "bucket-cheapest"
+                                             ? "bucketed strict cheapest insertion"
+                                             : "grouped insertion + open THM shortcut");
     auto solution = build_solution_from_state(
-        "C++ current-best: grouped insertion + open THM shortcut + " + fallback_label,
+        "C++ current-best: " + selection_label + " + " + fallback_label,
         problem,
         state,
         weights,
@@ -1783,6 +2106,31 @@ static std::string normalize_fallback_method(std::string value) {
     throw std::runtime_error("invalid --fallback-method, expected grasp or visited-area");
 }
 
+static std::string normalize_seed_route_optimizer(std::string value) {
+    value = upper(trim(value));
+    std::replace(value.begin(), value.end(), '_', '-');
+    if (value == "LKH" || value == "LKH-3" || value == "LKH3") return "lkh";
+    if (value == "CPP" || value == "C++" || value == "REGRET" || value == "REGRET-2OPT" || value == "REGRET-2-OPT") {
+        return "cpp";
+    }
+    throw std::runtime_error("invalid --seed-route-optimizer, expected lkh or cpp");
+}
+
+static std::string normalize_article_selection(std::string value) {
+    value = upper(trim(value));
+    std::replace(value.begin(), value.end(), '_', '-');
+    if (value == "GROUPED") return "grouped";
+    if (value == "BUCKET-CHEAPEST" || value == "BUCKETED-CHEAPEST" || value == "BUCKETED" ||
+        value == "BUCKET" || value == "GROUP-CHEAPEST" || value == "GROUPED-CHEAPEST") {
+        return "bucket-cheapest";
+    }
+    if (value == "GLOBAL-CHEAPEST" || value == "GLOBAL" || value == "FULL-CHEAPEST" ||
+        value == "STRICT-FULL-CHEAPEST" || value == "FULL-STRICT-CHEAPEST") {
+        return "global-cheapest";
+    }
+    throw std::runtime_error("invalid --article-selection, expected grouped, bucket-cheapest, or global-cheapest");
+}
+
 static void print_help() {
     std::cout << "C++ current-best warehouse picking heuristic\n\n";
     std::cout << "Options:\n";
@@ -1791,6 +2139,14 @@ static void print_help() {
     std::cout << "  --time-limit SECONDS              0 means unlimited\n";
     std::cout << "  --fallback-on-time-limit | --no-fallback-on-time-limit\n";
     std::cout << "  --fallback-method grasp|visited-area\n";
+    std::cout << "  --seed-route-optimizer lkh|cpp    Seed one-location routes with LKH or C++ regret+2-opt\n";
+    std::cout << "  --lkh-path PATH                   Defaults to external/LKH-3.0.14/LKH\n";
+    std::cout << "  --lkh-precision N                 Distance scale for LKH integer matrix (default 1000)\n";
+    std::cout << "  --lkh-runs N                      LKH runs per seed floor (default 1)\n";
+    std::cout << "  --lkh-seed N                      LKH random seed (default 1)\n";
+    std::cout << "  --lkh-max-trials N                0 uses max(100, nodes on floor)\n";
+    std::cout << "  --article-selection grouped|bucket-cheapest|global-cheapest\n";
+    std::cout << "  --candidate-group-width N         Candidate-count bucket width (default 2; 1 restores exact counts)\n";
     std::cout << "  --cleanup-operator none|2-opt|swap|relocate\n";
     std::cout << "  --cleanup-strategy best|first\n";
     std::cout << "  --cleanup-max-time SECONDS        Max time for cleanup (default 120.0)\n";
@@ -1833,6 +2189,14 @@ static Args parse_args(int argc, char** argv) {
         else if (flag == "--fallback-location-rcl-size") args.fallback_location_rcl_size = static_cast<std::size_t>(std::stoull(value));
         else if (flag == "--fallback-seed") args.fallback_seed = static_cast<std::uint64_t>(std::stoull(value));
         else if (flag == "--fallback-method") args.fallback_method = normalize_fallback_method(value);
+        else if (flag == "--seed-route-optimizer") args.seed_route_optimizer = normalize_seed_route_optimizer(value);
+        else if (flag == "--lkh-path") args.lkh_path = value;
+        else if (flag == "--lkh-precision") args.lkh_precision = std::stoi(value);
+        else if (flag == "--lkh-runs") args.lkh_runs = std::stoi(value);
+        else if (flag == "--lkh-seed") args.lkh_seed = std::stoi(value);
+        else if (flag == "--lkh-max-trials") args.lkh_max_trials = std::stoi(value);
+        else if (flag == "--article-selection") args.article_selection = normalize_article_selection(value);
+        else if (flag == "--candidate-group-width") args.candidate_group_width = std::max<std::size_t>(1, static_cast<std::size_t>(std::stoull(value)));
         else if (flag == "--cleanup-operator") args.cleanup_operator = value;
         else if (flag == "--cleanup-strategy") args.cleanup_strategy = value;
         else if (flag == "--cleanup-passes") args.cleanup_passes = static_cast<std::size_t>(std::stoull(value));

@@ -1,11 +1,13 @@
 # C++ Current-Best Solver
 
-Dependency-free C++17 port of the practical warehouse picking heuristic.
+C++17 port of the practical warehouse picking heuristic. It uses the external
+LKH-3 executable for the one-location seed route by default, with the old pure
+C++ seed route still available as a fallback option.
 
 Pipeline:
 
 1. Commit one-location articles first.
-2. Build a pure C++ seed route with regret insertion plus 2-opt.
+2. Build the seed route with LKH-3 over an explicit warehouse distance matrix.
 3. Process remaining articles by ascending candidate-count groups.
 4. Prefer already-open THMs before strict cheapest insertion.
 5. Complete with the selected fallback if a time cap is reached.
@@ -38,6 +40,10 @@ From this folder:
   --orders ../data/full/PickOrder.csv \
   --stock ../data/full/StockData.csv \
   --time-limit 300 \
+  --seed-route-optimizer lkh \
+  --lkh-path ../external/LKH-3.0.14/LKH \
+  --article-selection grouped \
+  --candidate-group-width 2 \
   --fallback-method visited-area \
   --cleanup-operator 2-opt \
   --cleanup-strategy best \
@@ -55,3 +61,13 @@ Cleanup options:
 
 - `--cleanup-operator none|2-opt|swap|relocate`
 - `--cleanup-strategy first|best`
+
+Seed route options:
+
+- `--seed-route-optimizer lkh`: default; writes a TSPLIB full-matrix problem per seed floor and calls LKH-3.
+- `--seed-route-optimizer cpp`: previous pure C++ regret insertion plus 2-opt seed route.
+- `--lkh-path PATH`: path to the LKH executable. If omitted, the solver looks for `external/LKH-3.0.14/LKH` from the repository root or `../external/LKH-3.0.14/LKH` from `cpp_solver/`.
+- `--article-selection grouped`: default; processes remaining articles by candidate-count buckets and uses the open-THM shortcut.
+- `--article-selection bucket-cheapest`: processes candidate-count buckets in order, but within each bucket commits the globally cheapest strict insertion.
+- `--article-selection global-cheapest`: evaluates every remaining article-location candidate with strict insertion at each step and commits the global cheapest candidate.
+- `--candidate-group-width N`: groups remaining articles by candidate-count buckets. The default `2` processes `2-3`, then `4-5`, then `6-7`, etc. Use `1` for the old exact-count order.

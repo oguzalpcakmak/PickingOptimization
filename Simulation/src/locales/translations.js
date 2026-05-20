@@ -29,12 +29,17 @@ export const translations = {
     excelDownloaded: 'Excel dosyası indirildi',
     reset: 'Sıfırlandı',
     alternativeCellsHighlighted: 'alternatif hücre vurgulandı',
+    solverNeedsFile: 'Önce Stok Bilgisi sheet’i olan bir Excel dosyası yükleyin',
+    solverComplete: 'C++ solver çıktısı yüklendi',
+    solverError: 'C++ solver hatası',
+    solverAlternativeFileName: 'C++ solver alternatif lokasyonları',
     
     // Progress stages
     stageTransform: 'Satırlar dönüştürülüyor...',
     stageFilter: 'MZN areaları filtreleniyor...',
     stageGroup: 'Toplama grupları oluşturuluyor...',
     stageOrder: 'Sıralama ve mesafe hesaplanıyor...',
+    stageSolver: 'C++ solver çalışıyor...',
     stageComplete: 'Tamamlandı!',
     
     // Stats
@@ -48,6 +53,10 @@ export const translations = {
     visualize: 'Görselleştir',
     hideVisualization: 'Görselleştirmeyi Kapat',
     resetBtn: 'Sıfırla',
+    runCppSolver: 'C++ Solver ile Optimize Et',
+    solverProfileFast: 'Hızlı',
+    solverProfileQuality: 'Kaliteli',
+    solverTimeLimit: 'Limit',
     
     // Table columns
     colPicker: 'PICKER',
@@ -59,6 +68,8 @@ export const translations = {
     colColumn: 'SÜTUN',
     colShelf: 'RAF',
     colLR: 'L/R',
+    colArticle: 'ÜRÜN',
+    colAmount: 'ADET',
     colOrder: 'SIRA',
     colStep: 'ADIM',
     colTotal: 'TOPLAM',
@@ -132,6 +143,13 @@ export const translations = {
     newStockItems: 'Yeni Eklenen',
     totalAddedBack: 'Toplam Eklenen',
     units: 'adet',
+    stockRows: 'stok satırı',
+    articles: 'ürün',
+    solverResultTitle: 'C++ Solver Sonucu',
+    objective: 'Objektif',
+    thmCount: 'THM',
+    solveTime: 'Çözüm Süresi',
+    secondsShort: 'sn',
   },
   
   en: {
@@ -161,12 +179,17 @@ export const translations = {
     excelDownloaded: 'Excel file downloaded',
     reset: 'Reset complete',
     alternativeCellsHighlighted: 'alternative cells highlighted',
+    solverNeedsFile: 'Upload an Excel file with a Stok Bilgisi sheet first',
+    solverComplete: 'C++ solver output loaded',
+    solverError: 'C++ solver error',
+    solverAlternativeFileName: 'C++ solver alternative locations',
     
     // Progress stages
     stageTransform: 'Transforming rows...',
     stageFilter: 'Filtering MZN areas...',
     stageGroup: 'Creating pick groups...',
     stageOrder: 'Calculating order and distance...',
+    stageSolver: 'C++ solver is running...',
     stageComplete: 'Complete!',
     
     // Stats
@@ -180,6 +203,10 @@ export const translations = {
     visualize: 'Visualize',
     hideVisualization: 'Hide Visualization',
     resetBtn: 'Reset',
+    runCppSolver: 'Optimize with C++ Solver',
+    solverProfileFast: 'Fast',
+    solverProfileQuality: 'Quality',
+    solverTimeLimit: 'Limit',
     
     // Table columns
     colPicker: 'PICKER',
@@ -191,6 +218,8 @@ export const translations = {
     colColumn: 'COLUMN',
     colShelf: 'SHELF',
     colLR: 'L/R',
+    colArticle: 'ARTICLE',
+    colAmount: 'AMOUNT',
     colOrder: 'ORDER',
     colStep: 'STEP',
     colTotal: 'TOTAL',
@@ -264,6 +293,13 @@ export const translations = {
     newStockItems: 'Newly Added',
     totalAddedBack: 'Total Added',
     units: 'units',
+    stockRows: 'stock rows',
+    articles: 'articles',
+    solverResultTitle: 'C++ Solver Result',
+    objective: 'Objective',
+    thmCount: 'THM',
+    solveTime: 'Solve Time',
+    secondsShort: 's',
   }
 };
 

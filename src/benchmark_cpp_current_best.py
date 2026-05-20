@@ -244,7 +244,7 @@ def write_report(rows: list[dict[str, Any]], report_path: Path) -> None:
         "",
         "This report benchmarks the C++ current-best solver across runtime budgets, cleanup operators, and first/best improvement strategies.",
         "",
-        f"Pipeline: `one-location prep + pure C++ seed route + ascending grouped strict insertion + open THM shortcut + {fallback_label} fallback + delta-cost cleanup`.",
+        f"Pipeline: `one-location prep + LKH-3 seed route + ascending grouped strict insertion + open THM shortcut + {fallback_label} fallback + delta-cost cleanup`.",
         "",
         "Common objective: `distance + 15 * opened THMs + 30 * active floors`.",
         "",

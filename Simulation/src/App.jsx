@@ -18,7 +18,9 @@ import {
   message, 
   Alert,
   Flex,
-  Tag
+  Tag,
+  Select,
+  InputNumber
 } from 'antd';
 import { 
   CloudUploadOutlined, 
@@ -55,6 +57,17 @@ const { Header, Content, Footer } = Layout;
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
+const SOLVER_PROFILES = {
+  fast: {
+    articleSelection: 'grouped',
+    candidateGroupWidth: 2
+  },
+  quality: {
+    articleSelection: 'bucket-cheapest',
+    candidateGroupWidth: 2
+  }
+};
+
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [lang, setLang] = useState('tr');
@@ -74,6 +87,11 @@ function App() {
   const [alternativeFile, setAlternativeFile] = useState(null);
   const [alternativeLocations, setAlternativeLocations] = useState([]);
   const [alternativeStats, setAlternativeStats] = useState(null);
+  const [solverRunning, setSolverRunning] = useState(false);
+  const [solverProfile, setSolverProfile] = useState('quality');
+  const [solverTimeLimit, setSolverTimeLimit] = useState(120);
+  const [solverSummary, setSolverSummary] = useState(null);
+  const [solverInputStats, setSolverInputStats] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -89,6 +107,8 @@ function App() {
     setFile({ name: t(lang, 'testDataName') });
     setRawData(null);
     setInputFormat(null);
+    setSolverSummary(null);
+    setSolverInputStats(null);
     
     // PICKED_AMOUNT'a göre satırları çoğalt
     const expandedData = [];
@@ -351,6 +371,8 @@ function App() {
     setUpdatedStockData(null);
     setStockStats(null);
     setInputFormat(null);
+    setSolverSummary(null);
+    setSolverInputStats(null);
     setProgress({ stage: '', progress: 0 });
     setProcessing(true);
 
@@ -439,6 +461,74 @@ function App() {
     return false; // Prevent default upload behavior
   }, [messageApi, lang]);
 
+  const runCppSolver = useCallback(() => {
+    if (!file || isTestData) {
+      messageApi.warning(t(lang, 'solverNeedsFile'));
+      return;
+    }
+
+    const profile = SOLVER_PROFILES[solverProfile] || SOLVER_PROFILES.quality;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('profile', solverProfile);
+    formData.append('articleSelection', profile.articleSelection);
+    formData.append('candidateGroupWidth', String(profile.candidateGroupWidth));
+    formData.append('timeLimit', String(solverTimeLimit || 120));
+
+    setSolverRunning(true);
+    setProcessing(true);
+    setSolverSummary(null);
+    setSolverInputStats(null);
+    setAlternativeFile(null);
+    setAlternativeLocations([]);
+    setAlternativeStats(null);
+    setProgress({ stage: 'solver', progress: 20 });
+
+    (async () => {
+      try {
+        const response = await fetch('/api/solve', {
+          method: 'POST',
+          body: formData
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || response.statusText);
+        }
+
+        setProgress({ stage: 'transform', progress: 0 });
+        const { data: processedResult, stats: processStats } = processExcel(payload.pickRows || [], (p) => {
+          setProgress(p);
+        });
+
+        setProcessedData(processedResult);
+        setStats(processStats);
+        setRawData(payload.pickRows || []);
+        setInputFormat(PICK_DATA_FORMATS.SOLVER_OUTPUT);
+        setUpdatedStockData(null);
+        setStockStats(null);
+        setSolverSummary(payload.summary || null);
+        setSolverInputStats(payload.inputStats || null);
+
+        if (payload.alternativeRows?.length) {
+          const { data, stats } = processAlternativeLocations(payload.alternativeRows);
+          setAlternativeFile({ name: t(lang, 'solverAlternativeFileName') });
+          setAlternativeLocations(data);
+          setAlternativeStats(stats);
+        }
+
+        messageApi.success(t(lang, 'solverComplete'));
+        setShowVisualizer(true);
+      } catch (error) {
+        messageApi.error(`${t(lang, 'solverError')}: ${error.message}`);
+        console.error(error);
+      } finally {
+        setSolverRunning(false);
+        setProcessing(false);
+      }
+    })();
+  }, [file, isTestData, lang, messageApi, solverProfile, solverTimeLimit]);
+
   const downloadExcel = useCallback(() => {
     if (!processedData) return;
 
@@ -481,6 +571,8 @@ function App() {
     setAlternativeFile(null);
     setAlternativeLocations([]);
     setAlternativeStats(null);
+    setSolverSummary(null);
+    setSolverInputStats(null);
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
 
@@ -495,6 +587,7 @@ function App() {
       filter: t(lang, 'stageFilter'),
       group: t(lang, 'stageGroup'),
       order: t(lang, 'stageOrder'),
+      solver: t(lang, 'stageSolver'),
       complete: t(lang, 'stageComplete')
     };
     return labels[stage] || stage;
@@ -516,6 +609,8 @@ function App() {
     { title: t(lang, 'colColumn'), dataIndex: 'COLUMN', key: 'column', width: 70 },
     { title: t(lang, 'colShelf'), dataIndex: 'SHELF', key: 'shelf', width: 50 },
     { title: t(lang, 'colLR'), dataIndex: 'LEFT_OR_RIGHT', key: 'lr', width: 50, render: (text) => <Tag color={text === 'L' ? 'red' : 'cyan'}>{text}</Tag> },
+    { title: t(lang, 'colArticle'), dataIndex: 'ARTICLE_CODE', key: 'article', width: 100 },
+    { title: t(lang, 'colAmount'), dataIndex: 'PICKED_AMOUNT', key: 'amount', width: 70 },
     { title: t(lang, 'colOrder'), dataIndex: 'PICK_ORDER', key: 'order', width: 60, render: (text) => <Text strong style={{ color: '#1890ff' }}>{text}</Text> },
     { title: t(lang, 'colStep'), dataIndex: 'STEP_DIST', key: 'step', width: 80, render: (text) => <Text type="success">{text}m</Text> },
     { title: t(lang, 'colTotal'), dataIndex: 'TOTAL_DIST', key: 'total', width: 90, render: (text) => <Text type="warning">{text}m</Text> },
@@ -738,9 +833,87 @@ function App() {
             </Card>
           )}
 
+          {solverSummary && (
+            <Card style={{ marginBottom: 24 }} title={t(lang, 'solverResultTitle')}>
+              <Row gutter={[16, 16]}>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title={t(lang, 'objective')}
+                    value={Number(solverSummary.objective_value || 0)}
+                    precision={2}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title={t(lang, 'totalDistance')}
+                    value={Number(solverSummary.distance || 0) / 1000}
+                    precision={2}
+                    suffix="km"
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title={t(lang, 'thmCount')}
+                    value={solverSummary.thms || 0}
+                    valueStyle={{ color: '#722ed1' }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title={t(lang, 'solveTime')}
+                    value={Number(solverSummary.solve_time || 0)}
+                    precision={2}
+                    suffix={t(lang, 'secondsShort')}
+                    valueStyle={{ color: '#fa8c16' }}
+                  />
+                </Col>
+              </Row>
+              {solverInputStats && (
+                <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
+                  {solverInputStats.orderArticles} {t(lang, 'articles')} | {solverInputStats.totalDemand} {t(lang, 'units')} | {solverInputStats.solverStockRows} {t(lang, 'stockRows')}
+                </Text>
+              )}
+            </Card>
+          )}
+
           {/* Action Buttons */}
           <Card style={{ marginBottom: 24 }}>
             <Flex wrap="wrap" gap={12} justify="center">
+              {file && !isTestData && (
+                <>
+                  <Select
+                    value={solverProfile}
+                    onChange={setSolverProfile}
+                    disabled={solverRunning || processing}
+                    style={{ width: 150 }}
+                    options={[
+                      { value: 'quality', label: t(lang, 'solverProfileQuality') },
+                      { value: 'fast', label: t(lang, 'solverProfileFast') }
+                    ]}
+                  />
+                  <InputNumber
+                    min={1}
+                    max={600}
+                    value={solverTimeLimit}
+                    onChange={(value) => setSolverTimeLimit(value || 120)}
+                    disabled={solverRunning || processing}
+                    addonBefore={t(lang, 'solverTimeLimit')}
+                    addonAfter={t(lang, 'secondsShort')}
+                    style={{ width: 170 }}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<NodeIndexOutlined />}
+                    size="large"
+                    loading={solverRunning}
+                    onClick={runCppSolver}
+                  >
+                    {t(lang, 'runCppSolver')}
+                  </Button>
+                </>
+              )}
               {processedData && (
                 <Button 
                   type="primary" 
