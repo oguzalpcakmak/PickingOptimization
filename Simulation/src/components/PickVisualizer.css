@@ -31,6 +31,34 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.view-settings-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  flex-basis: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.view-settings-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #d8e2f2;
+  margin-right: 0.5rem;
+}
+
+.switch-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -205,7 +233,7 @@
 
 .layout-container {
   overflow: visible;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(15, 23, 42, 0.28);
   border-radius: 12px;
   padding: 1rem;
   padding-top: 2rem;  /* Asansörler için ekstra boşluk */
@@ -221,7 +249,7 @@
 
 .layout {
   position: relative;
-  background: #1a1a2e;
+  background: #151c2d;
   border: 2px solid rgba(255, 255, 255, 0.1);
   will-change: transform;
   overflow: visible;
@@ -230,8 +258,8 @@
 /* Cross Aisle */
 .cross-aisle {
   position: absolute;
-  background: rgba(255, 200, 100, 0.15);
-  border: 1px dashed rgba(255, 200, 100, 0.4);
+  background: rgba(221, 188, 109, 0.14);
+  border: 1px dashed rgba(221, 188, 109, 0.44);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,7 +267,7 @@
 
 .cross-aisle-label {
   font-size: 0.5rem;
-  color: rgba(255, 200, 100, 0.8);
+  color: rgba(238, 211, 150, 0.84);
   writing-mode: horizontal-tb;
   white-space: nowrap;
 }
@@ -303,9 +331,9 @@
 /* Koridorlar */
 .aisle {
   position: absolute;
-  background: rgba(100, 150, 255, 0.1);
-  border-left: 1px solid rgba(100, 150, 255, 0.3);
-  border-right: 1px solid rgba(100, 150, 255, 0.3);
+  background: rgba(92, 130, 196, 0.12);
+  border-left: 1px solid rgba(120, 154, 210, 0.34);
+  border-right: 1px solid rgba(120, 154, 210, 0.34);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -314,15 +342,15 @@
 
 .aisle-label {
   font-size: 0.4rem;
-  color: rgba(100, 150, 255, 0.8);
+  color: rgba(164, 190, 232, 0.86);
   font-weight: bold;
 }
 
 /* Raflar */
 .shelf {
   position: absolute;
-  background: rgba(150, 100, 50, 0.5);
-  border: 1px solid rgba(150, 100, 50, 0.8);
+  background: rgba(86, 101, 118, 0.58);
+  border: 1px solid rgba(124, 143, 163, 0.72);
   transition: all 0.3s ease;
 }
 
@@ -348,29 +376,30 @@
   z-index: 5;
 }
 
-/* Önceki adımların izi */
-.pick-trail {
-  position: absolute;
-  width: 1rem;
-  height: 1rem;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
+.shelf-visited {
+  z-index: 4;
 }
 
-.trail-order {
-  font-size: 0.4rem;
-  color: rgba(0, 255, 136, 0.8);
-  background: rgba(0, 255, 136, 0.2);
-  border: 1px solid rgba(0, 255, 136, 0.5);
-  border-radius: 50%;
-  width: 0.8rem;
-  height: 0.8rem;
+.quantity-badge {
+  position: absolute;
+  min-width: 1.18rem;
+  height: 1.18rem;
+  padding: 0 0.18rem;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: #476f89;
+  border: 1px solid rgba(237, 245, 250, 0.92);
+  color: #ffffff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 0.52rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0;
+  pointer-events: none;
+  z-index: 14;
 }
 
 /* Yol çizgileri */
@@ -379,7 +408,7 @@
   top: 0;
   left: 0;
   pointer-events: none;
-  z-index: 5;
+  z-index: 8;
 }
 
 /* Mevcut pozisyon */
@@ -505,8 +534,8 @@
 }
 
 .legend-color.legend-shelf {
-  background: rgba(150, 100, 50, 0.5);
-  border: 1px solid rgba(150, 100, 50, 0.8);
+  background: rgba(86, 101, 118, 0.58);
+  border: 1px solid rgba(124, 143, 163, 0.72);
 }
 
 .legend-color.legend-aisle {
@@ -545,9 +574,16 @@
 }
 
 .legend-color.legend-trail {
-  background: rgba(0, 255, 136, 0.2);
-  border: 1px solid rgba(0, 255, 136, 0.5);
-  border-radius: 50%;
+  height: 0.35rem;
+  background: rgba(204, 57, 57, 0.95);
+  border: none;
+  border-radius: 999px;
+}
+
+.legend-color.legend-quantity {
+  background: #476f89;
+  border: 1px solid rgba(237, 245, 250, 0.92);
+  border-radius: 999px;
 }
 
 /* ===== LIGHT MODE STYLES ===== */
@@ -557,6 +593,19 @@
 
 .pick-visualizer.light-mode .control-group.filter-toggle {
   border-bottom-color: rgba(0, 0, 0, 0.05);
+}
+
+.pick-visualizer.light-mode .view-settings-panel {
+  background: #f8fafc;
+  border-color: #d8e0ea;
+}
+
+.pick-visualizer.light-mode .view-settings-title {
+  color: #334155;
+}
+
+.pick-visualizer.light-mode .switch-control {
+  color: #475569;
 }
 
 .pick-visualizer.light-mode .checkbox-label {
@@ -631,66 +680,85 @@
 }
 
 .pick-visualizer.light-mode .layout-container {
-  background: rgba(0, 0, 0, 0.05);
+  background: #eef3f8;
 }
 
 .pick-visualizer.light-mode .layout {
-  background: #f5f5f5;
-  border-color: rgba(0, 0, 0, 0.15);
+  background: #f8fafc;
+  border-color: #cfd8e3;
 }
 
 /* Cross Aisle - Light Mode */
 .pick-visualizer.light-mode .cross-aisle {
-  background: rgba(200, 150, 50, 0.2);
-  border-color: rgba(200, 150, 50, 0.5);
+  background: #e9eee8;
+  border-color: #bac8b7;
 }
 
 .pick-visualizer.light-mode .cross-aisle-label {
-  color: rgba(150, 100, 0, 0.9);
+  color: #60705e;
 }
 
 /* Koridorlar - Light Mode */
 .pick-visualizer.light-mode .aisle {
-  background: rgba(50, 100, 200, 0.15);
-  border-left-color: rgba(50, 100, 200, 0.4);
-  border-right-color: rgba(50, 100, 200, 0.4);
+  background: #e9f0f7;
+  border-left-color: #bfd0e2;
+  border-right-color: #bfd0e2;
 }
 
 .pick-visualizer.light-mode .aisle-label {
-  color: rgba(50, 100, 200, 0.9);
+  color: #526a88;
+}
+
+.pick-visualizer.same-corridor-color .cross-aisle {
+  background: rgba(92, 130, 196, 0.12);
+  border-style: solid;
+  border-color: rgba(120, 154, 210, 0.34);
+}
+
+.pick-visualizer.same-corridor-color .cross-aisle-label {
+  color: rgba(164, 190, 232, 0.86);
+}
+
+.pick-visualizer.light-mode.same-corridor-color .cross-aisle {
+  background: #e9f0f7;
+  border-style: solid;
+  border-color: #bfd0e2;
+}
+
+.pick-visualizer.light-mode.same-corridor-color .cross-aisle-label {
+  color: #526a88;
 }
 
 /* Raflar - Light Mode */
 .pick-visualizer.light-mode .shelf {
-  background: rgba(120, 80, 40, 0.4);
-  border-color: rgba(120, 80, 40, 0.7);
+  background: #cbd7e4;
+  border-color: #aab9c8;
 }
 
 .pick-visualizer.light-mode .shelf-alternative {
-  background: rgba(255, 120, 190, 0.5);
-  border-color: rgba(214, 51, 132, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: #f6c8dc;
+  border-color: #c75d8b;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 /* Aktif raf - Sol taraf (L) - Light Mode */
 .pick-visualizer.light-mode .shelf-active-left {
-  background: rgba(220, 50, 50, 0.7);
-  border-color: rgba(200, 0, 0, 1);
-  box-shadow: 0 0 10px rgba(200, 0, 0, 0.6);
+  background: #df8076;
+  border-color: #b53f35;
+  box-shadow: 0 0 10px rgba(181, 63, 53, 0.42);
 }
 
 /* Aktif raf - Sağ taraf (R) - Light Mode */
 .pick-visualizer.light-mode .shelf-active-right {
-  background: rgba(50, 120, 200, 0.7);
-  border-color: rgba(0, 80, 180, 1);
-  box-shadow: 0 0 10px rgba(0, 80, 180, 0.6);
+  background: #77a8d8;
+  border-color: #3d76ad;
+  box-shadow: 0 0 10px rgba(61, 118, 173, 0.42);
 }
 
-/* Önceki adımların izi - Light Mode */
-.pick-visualizer.light-mode .trail-order {
-  color: rgba(0, 150, 80, 0.9);
-  background: rgba(0, 150, 80, 0.2);
-  border-color: rgba(0, 150, 80, 0.5);
+.pick-visualizer.light-mode .quantity-badge {
+  background: #4d7792;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 7px rgba(51, 65, 85, 0.24);
 }
 
 /* Mevcut pozisyon - Light Mode */
@@ -718,18 +786,18 @@
 }
 
 .pick-visualizer.light-mode .legend-color.legend-shelf {
-  background: rgba(120, 80, 40, 0.4);
-  border-color: rgba(120, 80, 40, 0.7);
+  background: #cbd7e4;
+  border-color: #aab9c8;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-aisle {
-  background: rgba(50, 100, 200, 0.15);
-  border-color: rgba(50, 100, 200, 0.5);
+  background: #e9f0f7;
+  border-color: #bfd0e2;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-cross-aisle {
-  background: rgba(200, 150, 50, 0.2);
-  border-color: rgba(200, 150, 50, 0.5);
+  background: #e9eee8;
+  border-color: #bac8b7;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-elevator {
@@ -738,18 +806,18 @@
 }
 
 .pick-visualizer.light-mode .legend-color.legend-shelf-left {
-  background: rgba(220, 50, 50, 0.7);
-  border-color: rgba(200, 0, 0, 1);
+  background: #df8076;
+  border-color: #b53f35;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-shelf-right {
-  background: rgba(50, 120, 200, 0.7);
-  border-color: rgba(0, 80, 180, 1);
+  background: #77a8d8;
+  border-color: #3d76ad;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-alternative {
-  background: rgba(255, 120, 190, 0.5);
-  border-color: rgba(214, 51, 132, 0.95);
+  background: #f6c8dc;
+  border-color: #c75d8b;
 }
 
 .pick-visualizer.light-mode .legend-color.legend-current {
@@ -757,6 +825,10 @@
 }
 
 .pick-visualizer.light-mode .legend-color.legend-trail {
-  background: rgba(0, 150, 80, 0.2);
-  border-color: rgba(0, 150, 80, 0.5);
+  background: rgba(204, 57, 57, 0.95);
+}
+
+.pick-visualizer.light-mode .legend-color.legend-quantity {
+  background: #4d7792;
+  border-color: rgba(255, 255, 255, 0.95);
 }

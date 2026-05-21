@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Button, Tooltip, Checkbox } from 'antd';
+import { Button, Tooltip, Checkbox, Switch } from 'antd';
 import {
   StepBackwardOutlined,
   StepForwardOutlined,
   FastBackwardOutlined,
   FastForwardOutlined,
   PlayCircleOutlined,
-  PauseCircleOutlined
+  PauseCircleOutlined,
+  DownloadOutlined
 } from '@ant-design/icons';
+import { toPng } from 'html-to-image';
 import {
   AISLE_WIDTH,
   COLUMN_LENGTH,
@@ -37,6 +39,19 @@ import {
 import { t } from '../locales/translations.js';
 import './PickVisualizer.css';
 
+function parsePickAmount(value) {
+  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function formatPickAmount(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function sanitizeFilePart(value) {
+  return String(value || 'route').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '');
+}
+
 function PickVisualizer({
   data,
   isDarkMode = true,
@@ -53,11 +68,19 @@ function PickVisualizer({
   const [scale, setScale] = useState(1);
   const [filterSingleFloor, setFilterSingleFloor] = useState(true);
   const [filterHasNoTime, setFilterHasNoTime] = useState(true);
+  const [showAlternativeLocations, setShowAlternativeLocations] = useState(false);
+  const [showAccessElements, setShowAccessElements] = useState(false);
+  const [distinguishCorridors, setDistinguishCorridors] = useState(false);
+  const [showQuantityBadges, setShowQuantityBadges] = useState(false);
   const containerRef = useRef(null);
   const hasPickData = data.length > 0;
 
   const alternativeCellMap = useMemo(() => {
     const cellMap = new Map();
+
+    if (!showAlternativeLocations) {
+      return cellMap;
+    }
 
     alternativeLocations.forEach((row) => {
       const aisle = parseInt(row.AISLE, 10);
@@ -84,7 +107,7 @@ function PickVisualizer({
     });
 
     return cellMap;
-  }, [alternativeLocations]);
+  }, [alternativeLocations, showAlternativeLocations]);
 
   // Birden fazla kata giden grupları tespit et
   const multiFloorGroups = useMemo(() => {
@@ -176,10 +199,6 @@ function PickVisualizer({
 
   // Benzersiz PICKER_CODE'ları al (filtreye göre)
   const pickerCodes = useMemo(() => {
-    console.log('=== pickerCodes hesaplanıyor ===');
-    console.log('data length:', data.length);
-    console.log('data sample:', data.slice(0, 3));
-    
     // START, RETURN ve STAIR satırlarını hariç tut
     let filteredData = data.filter(row => 
       !row.IS_START && !row.IS_RETURN && !row.IS_STAIR_START && !row.IS_STAIR_RETURN
@@ -201,9 +220,7 @@ function PickVisualizer({
       });
     }
     
-    console.log('filteredData length:', filteredData.length);
     const codes = [...new Set(filteredData.map(row => row.PICKER_CODE))];
-    console.log('pickerCodes:', codes);
     return codes.sort();
   }, [data, filterSingleFloor, filterHasNoTime, multiFloorGroups, noTimeGroups]);
 
@@ -255,6 +272,33 @@ function PickVisualizer({
 
   // Çizgi çizmek için tüm adımlar (currentStep dahil)
   const pathPicks = pickData.slice(0, currentStep + 1);
+
+  const visitedShelfMap = useMemo(() => {
+    const visited = new Map();
+
+    pathPicks.forEach((pick) => {
+      if (pick.IS_RETURN || pick.IS_START || pick.IS_STAIR_START || pick.IS_STAIR_RETURN) return;
+
+      const aisle = parseInt(pick.AISLE, 10);
+      const column = parseInt(pick.COLUMN, 10);
+      if (Number.isNaN(aisle) || Number.isNaN(column)) return;
+
+      const visualSide = pick.LEFT_OR_RIGHT === 'L' ? 'R' : 'L';
+      const key = `${aisle}|${column}|${visualSide}`;
+      if (!visited.has(key)) {
+        visited.set(key, {
+          pickOrder: pick.PICK_ORDER
+        });
+      }
+    });
+
+    return visited;
+  }, [pathPicks]);
+
+  const visitedShelfColor = {
+    background: '#9fcfc7',
+    border: '#3f837b'
+  };
 
   // Picker seçildiğinde pickcar'ı sıfırla
   useEffect(() => {
@@ -386,6 +430,44 @@ function PickVisualizer({
     
     return items;
   }, []);
+
+  const shelfPositionMap = useMemo(() => {
+    const positions = new Map();
+    shelves.forEach((shelf) => {
+      positions.set(`${shelf.aisle}|${shelf.column}|${shelf.side}`, shelf);
+    });
+    return positions;
+  }, [shelves]);
+
+  const quantityBadges = useMemo(() => {
+    const badges = new Map();
+
+    pathPicks.forEach((pick) => {
+      if (pick.IS_RETURN || pick.IS_START || pick.IS_STAIR_START || pick.IS_STAIR_RETURN) return;
+
+      const aisle = parseInt(pick.AISLE, 10);
+      const column = parseInt(pick.COLUMN, 10);
+      if (Number.isNaN(aisle) || Number.isNaN(column)) return;
+
+      const visualSide = pick.LEFT_OR_RIGHT === 'L' ? 'R' : 'L';
+      const key = `${aisle}|${column}|${visualSide}`;
+      const shelf = shelfPositionMap.get(key);
+      if (!shelf) return;
+
+      if (!badges.has(key)) {
+        badges.set(key, {
+          key,
+          amount: 0,
+          x: shelf.x + shelf.width / 2,
+          y: shelf.y + shelf.height / 2
+        });
+      }
+
+      badges.get(key).amount += parsePickAmount(pick.PICKED_AMOUNT);
+    });
+
+    return Array.from(badges.values()).filter((badge) => badge.amount > 0);
+  }, [pathPicks, shelfPositionMap]);
 
   // Koridorları oluştur (AISLE 27 solda, AISLE 1 sağda)
   const aisles = useMemo(() => {
@@ -534,8 +616,23 @@ function PickVisualizer({
     return null;
   }, [pickData, currentPick]);
 
+  const exportPng = useCallback(async () => {
+    if (!containerRef.current) return;
+
+    const dataUrl = await toPng(containerRef.current, {
+      pixelRatio: 3,
+      cacheBust: true,
+      backgroundColor: isDarkMode ? '#151c2d' : '#eef3f8'
+    });
+
+    const link = document.createElement('a');
+    link.download = `picking-route-${sanitizeFilePart(selectedPicker)}-${sanitizeFilePart(selectedPickcar)}.png`;
+    link.href = dataUrl;
+    link.click();
+  }, [isDarkMode, selectedPickcar, selectedPicker]);
+
   return (
-    <div className={`pick-visualizer ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+    <div className={`pick-visualizer ${isDarkMode ? 'dark-mode' : 'light-mode'} ${distinguishCorridors ? 'split-corridor-color' : 'same-corridor-color'}`}>
       <div className="visualizer-controls">
         <div className="control-group filter-toggle">
           {hasPickData && (
@@ -571,6 +668,44 @@ function PickVisualizer({
           >
             {isFullscreen ? '⊟' : '⊞'} {isFullscreen ? t(lang, 'normalView') : t(lang, 'fullscreen')}
           </button>
+        </div>
+
+        <div className="view-settings-panel">
+          <div className="view-settings-title">{t(lang, 'viewSettings')}</div>
+          <label className="switch-control">
+            <Switch
+              size="small"
+              checked={showAlternativeLocations}
+              disabled={alternativeLocations.length === 0}
+              onChange={setShowAlternativeLocations}
+            />
+            <span>{t(lang, 'showAlternativeLocations')}</span>
+          </label>
+          <label className="switch-control">
+            <Switch
+              size="small"
+              checked={showAccessElements}
+              onChange={setShowAccessElements}
+            />
+            <span>{t(lang, 'showAccessElements')}</span>
+          </label>
+          <label className="switch-control">
+            <Switch
+              size="small"
+              checked={distinguishCorridors}
+              onChange={setDistinguishCorridors}
+            />
+            <span>{t(lang, 'distinguishCorridors')}</span>
+          </label>
+          <label className="switch-control">
+            <Switch
+              size="small"
+              checked={showQuantityBadges}
+              disabled={pickData.length === 0}
+              onChange={setShowQuantityBadges}
+            />
+            <span>{t(lang, 'showQuantityBadges')}</span>
+          </label>
         </div>
 
         {hasPickData && (
@@ -657,6 +792,14 @@ function PickVisualizer({
                 <Button 
                   icon={<FastForwardOutlined />} 
                   onClick={() => setCurrentStep(pickData.length - 1)}
+                />
+              </Tooltip>
+              <Tooltip title={t(lang, 'exportPng')}>
+                <Button
+                  aria-label={t(lang, 'exportPng')}
+                  className="export-png-button"
+                  icon={<DownloadOutlined />}
+                  onClick={exportPng}
                 />
               </Tooltip>
             </div>
@@ -838,7 +981,7 @@ function PickVisualizer({
             ))}
 
             {/* Asansörler */}
-            {elevators.map((elevator) => (
+            {showAccessElements && elevators.map((elevator) => (
               <div
                 key={`elevator-${elevator.id}`}
                 className={`elevator ${activeElevator === elevator.id ? 'elevator-active' : ''}`}
@@ -854,7 +997,7 @@ function PickVisualizer({
             ))}
 
             {/* Merdivenler */}
-            {stairs.map((stair) => (
+            {showAccessElements && stairs.map((stair) => (
               <div
                 key={`stair-${stair.id}`}
                 className={`stair ${activeStair === stair.id ? 'stair-active' : ''}`}
@@ -897,7 +1040,14 @@ function PickVisualizer({
               shelf.side === visualSide;
             const alternativeInfo = alternativeCellMap.get(`${shelf.aisle}|${shelf.column}|${shelf.side}`);
             const isAlternative = Boolean(alternativeInfo);
+            const visitedInfo = visitedShelfMap.get(`${shelf.aisle}|${shelf.column}|${shelf.side}`);
+            const isVisited = Boolean(visitedInfo);
+            const visitedColor = isVisited ? visitedShelfColor : null;
             const titleParts = [];
+
+            if (isVisited) {
+              titleParts.push(`${t(lang, 'legendTrail')}: ${visitedInfo.pickOrder}`);
+            }
 
             if (isAlternative) {
               titleParts.push(t(lang, 'legendAlternative'));
@@ -917,37 +1067,36 @@ function PickVisualizer({
             return (
               <div
                 key={`shelf-${i}`}
-                className={`shelf ${isAlternative ? 'shelf-alternative' : ''} ${isActive ? (shelf.side === 'L' ? 'shelf-active-left' : 'shelf-active-right') : ''}`}
+                className={`shelf ${isAlternative ? 'shelf-alternative' : ''} ${isVisited ? 'shelf-visited' : ''} ${isActive ? (shelf.side === 'L' ? 'shelf-active-left' : 'shelf-active-right') : ''}`}
                 style={{
                   left: `${shelf.x}rem`,
                   top: `${shelf.y}rem`,
                   width: `${shelf.width}rem`,
-                  height: `${shelf.height}rem`
+                  height: `${shelf.height}rem`,
+                  ...(isVisited && visitedColor ? {
+                    background: visitedColor.background,
+                    borderColor: visitedColor.border,
+                    boxShadow: `inset 0 0 0 1px ${visitedColor.border}55${isActive ? `, 0 0 10px ${visitedColor.border}88` : ''}`
+                  } : {})
                 }}
                 title={titleParts.join('\n') || undefined}
               />
             );
           })}
 
-          {/* Önceki adımların izi (normal pick'ler için) */}
-          {pathPicks.slice(0, -1).filter(p => 
-            !p.IS_RETURN && !p.IS_START && !p.IS_STAIR_START && !p.IS_STAIR_RETURN
-          ).map((pick, i) => {
-            const x = getXCoordinate(parseInt(pick.AISLE));
-            const y = getYCoordinate(parseInt(pick.COLUMN));
-            return (
-              <div
-                key={`trail-${i}`}
-                className="pick-trail"
-                style={{
-                  left: `${x}rem`,
-                  top: `${y}rem`
-                }}
-              >
-                <span className="trail-order">{pick.PICK_ORDER}</span>
-              </div>
-            );
-          })}
+          {showQuantityBadges && quantityBadges.map((badge) => (
+            <div
+              key={`quantity-${badge.key}`}
+              className="quantity-badge"
+              style={{
+                left: `${badge.x}rem`,
+                top: `${badge.y}rem`
+              }}
+              title={`${t(lang, 'legendQuantity')}: ${formatPickAmount(badge.amount)}`}
+            >
+              {formatPickAmount(badge.amount)}
+            </div>
+          ))}
 
           {/* Önceki adımlar arası çizgiler (Manhattan path) */}
           {pathPicks.length >= 1 && (
@@ -968,6 +1117,7 @@ function PickVisualizer({
                 
                 // Merdivenden asansöre çizgi (mor)
                 if (prevPick.IS_STAIR_START && pick.IS_START) {
+                  if (!showAccessElements) return null;
                   const stairPos = getStairPosition(prevPick.STAIR_NUM);
                   const elevatorX = getXCoordinate(pick.ELEVATOR_NUM === 1 ? ELEVATOR_1_AISLE : ELEVATOR_2_AISLE);
                   const elevatorY = ELEVATOR_DEPTH / 2;
@@ -986,9 +1136,8 @@ function PickVisualizer({
                       key={`line-stair-elevator-${i}`}
                       points={pointsStr}
                       fill="none"
-                      stroke="rgba(156, 39, 176, 0.7)"
-                      strokeWidth="0.15"
-                      strokeDasharray="0.3"
+                      stroke="rgba(204, 57, 57, 0.95)"
+                      strokeWidth="0.32"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -997,6 +1146,7 @@ function PickVisualizer({
                 
                 // Asansörden ilk pick'e çizgi (sarı)
                 if (prevPick.IS_START && !pick.IS_STAIR_START && !pick.IS_STAIR_RETURN) {
+                  if (!showAccessElements) return null;
                   const elevatorX = getXCoordinate(prevPick.ELEVATOR_NUM === 1 ? ELEVATOR_1_AISLE : ELEVATOR_2_AISLE);
                   const elevatorY = ELEVATOR_DEPTH / 2;
                   const pickX = getXCoordinate(parseInt(pick.AISLE));
@@ -1017,9 +1167,8 @@ function PickVisualizer({
                       key={`line-start-${i}`}
                       points={pointsStr}
                       fill="none"
-                      stroke="rgba(255, 193, 7, 0.7)"
-                      strokeWidth="0.15"
-                      strokeDasharray="0.3"
+                      stroke="rgba(204, 57, 57, 0.95)"
+                      strokeWidth="0.32"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -1028,6 +1177,7 @@ function PickVisualizer({
                 
                 // Dönüş satırı ise asansöre çizgi çiz (kırmızı)
                 if (pick.IS_RETURN) {
+                  if (!showAccessElements) return null;
                   const x1 = getXCoordinate(parseInt(prevPick.AISLE));
                   const y1 = getYCoordinate(parseInt(prevPick.COLUMN)) + ELEVATOR_DEPTH;
                   const elevatorX = getXCoordinate(pick.ELEVATOR_NUM === 1 ? ELEVATOR_1_AISLE : ELEVATOR_2_AISLE);
@@ -1048,9 +1198,8 @@ function PickVisualizer({
                       key={`line-return-${i}`}
                       points={pointsStr}
                       fill="none"
-                      stroke="rgba(255, 100, 100, 0.7)"
-                      strokeWidth="0.15"
-                      strokeDasharray="0.3"
+                      stroke="rgba(204, 57, 57, 0.95)"
+                      strokeWidth="0.32"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -1059,6 +1208,7 @@ function PickVisualizer({
                 
                 // Asansörden merdivene dönüş çizgisi (mor)
                 if (pick.IS_STAIR_RETURN && prevPick.IS_RETURN) {
+                  if (!showAccessElements) return null;
                   const elevatorX = getXCoordinate(prevPick.ELEVATOR_NUM === 1 ? ELEVATOR_1_AISLE : ELEVATOR_2_AISLE);
                   const elevatorY = ELEVATOR_DEPTH / 2;
                   const stairPos = getStairPosition(pick.STAIR_NUM);
@@ -1077,9 +1227,8 @@ function PickVisualizer({
                       key={`line-elevator-stair-${i}`}
                       points={pointsStr}
                       fill="none"
-                      stroke="rgba(156, 39, 176, 0.7)"
-                      strokeWidth="0.15"
-                      strokeDasharray="0.3"
+                      stroke="rgba(204, 57, 57, 0.95)"
+                      strokeWidth="0.32"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -1109,9 +1258,8 @@ function PickVisualizer({
                     key={`line-${i}`}
                     points={pointsStr}
                     fill="none"
-                    stroke="rgba(0, 255, 136, 0.5)"
-                    strokeWidth="0.15"
-                    strokeDasharray="0.3"
+                    stroke="rgba(204, 57, 57, 0.95)"
+                    strokeWidth="0.34"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
@@ -1137,7 +1285,7 @@ function PickVisualizer({
           )}
           
           {/* Merdivende başlangıç pozisyonu */}
-          {currentPick && currentPick.IS_STAIR_START && (() => {
+          {showAccessElements && currentPick && currentPick.IS_STAIR_START && (() => {
             const stairPos = getStairPosition(currentPick.STAIR_NUM);
             return (
               <div
@@ -1156,7 +1304,7 @@ function PickVisualizer({
           })()}
           
           {/* Asansörde başlangıç pozisyonu */}
-          {currentPick && currentPick.IS_START && (
+          {showAccessElements && currentPick && currentPick.IS_START && (
             <div
               className="current-position start-position"
               style={{
@@ -1172,7 +1320,7 @@ function PickVisualizer({
           )}
           
           {/* Asansöre dönüş pozisyonu */}
-          {currentPick && currentPick.IS_RETURN && (
+          {showAccessElements && currentPick && currentPick.IS_RETURN && (
             <div
               className="current-position return-position"
               style={{
@@ -1188,7 +1336,7 @@ function PickVisualizer({
           )}
           
           {/* Merdivene dönüş pozisyonu */}
-          {currentPick && currentPick.IS_STAIR_RETURN && (() => {
+          {showAccessElements && currentPick && currentPick.IS_STAIR_RETURN && (() => {
             const stairPos = getStairPosition(currentPick.STAIR_NUM);
             return (
               <div
@@ -1223,10 +1371,12 @@ function PickVisualizer({
           <div className="legend-color legend-cross-aisle"></div>
           <span>{t(lang, 'legendCrossAisle')}</span>
         </div>
-        <div className="legend-item">
-          <div className="legend-color legend-elevator"></div>
-          <span>{t(lang, 'legendElevator')}</span>
-        </div>
+        {showAccessElements && (
+          <div className="legend-item">
+            <div className="legend-color legend-elevator"></div>
+            <span>{t(lang, 'legendElevator')}</span>
+          </div>
+        )}
         <div className="legend-item">
           <div className="legend-color legend-shelf-left"></div>
           <span>{t(lang, 'legendShelfLeft')}</span>
@@ -1235,7 +1385,7 @@ function PickVisualizer({
           <div className="legend-color legend-shelf-right"></div>
           <span>{t(lang, 'legendShelfRight')}</span>
         </div>
-        {alternativeLocations.length > 0 && (
+        {showAlternativeLocations && alternativeLocations.length > 0 && (
           <div className="legend-item">
             <div className="legend-color legend-alternative"></div>
             <span>{t(lang, 'legendAlternative')}</span>
@@ -1249,6 +1399,12 @@ function PickVisualizer({
           <div className="legend-color legend-trail"></div>
           <span>{t(lang, 'legendTrail')}</span>
         </div>
+        {showQuantityBadges && (
+          <div className="legend-item">
+            <div className="legend-color legend-quantity"></div>
+            <span>{t(lang, 'legendQuantity')}</span>
+          </div>
+        )}
       </div>
     </div>
   );

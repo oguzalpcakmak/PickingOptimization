@@ -14,6 +14,8 @@ export const translations = {
     loadTestData: 'Test Verisi Yükle',
     uploadedFile: 'Yüklenen dosya',
     alternativeFileUploaded: 'Alternatif dosya',
+    detailedView: 'Detaylı Görünüm',
+    detailedViewHint: 'Test ve alternatif lokasyon yükleme araçları için Detaylı Görünüm’ü açın',
     
     // Messages
     testDataLoaded: 'Test verisi yüklendi (6255 satır, önceden dönüştürülmüş)',
@@ -57,6 +59,7 @@ export const translations = {
     solverProfileFast: 'Hızlı',
     solverProfileQuality: 'Kaliteli',
     solverTimeLimit: 'Limit',
+    exportPng: 'PNG İndir',
     
     // Table columns
     colPicker: 'PICKER',
@@ -131,6 +134,12 @@ export const translations = {
     legendAlternative: 'Alternatif Lokasyon',
     legendCurrent: 'Mevcut Konum',
     legendTrail: 'Geçmiş Adımlar',
+    legendQuantity: 'Toplama Miktarı',
+    viewSettings: 'Görünüm Ayarları',
+    showAlternativeLocations: 'Alternatif Lokasyonlar',
+    showAccessElements: 'Asansör/Merdiven',
+    distinguishCorridors: 'Koridor Renk Ayrımı',
+    showQuantityBadges: 'Toplama Miktarı',
     
     // Stock Processing
     stockRowsRead: 'stok satırı okundu',
@@ -164,6 +173,8 @@ export const translations = {
     loadTestData: 'Load Test Data',
     uploadedFile: 'Uploaded file',
     alternativeFileUploaded: 'Alternative file',
+    detailedView: 'Detailed View',
+    detailedViewHint: 'Open Detailed View for test data and alternative location uploads',
     
     // Messages
     testDataLoaded: 'Test data loaded (6255 rows, pre-processed)',
@@ -207,6 +218,7 @@ export const translations = {
     solverProfileFast: 'Fast',
     solverProfileQuality: 'Quality',
     solverTimeLimit: 'Limit',
+    exportPng: 'Export PNG',
     
     // Table columns
     colPicker: 'PICKER',
@@ -281,6 +293,12 @@ export const translations = {
     legendAlternative: 'Alternative Location',
     legendCurrent: 'Current Position',
     legendTrail: 'Past Steps',
+    legendQuantity: 'Pick Quantity',
+    viewSettings: 'View Settings',
+    showAlternativeLocations: 'Alternative Locations',
+    showAccessElements: 'Elevator/Stairs',
+    distinguishCorridors: 'Corridor Color Split',
+    showQuantityBadges: 'Pick Quantity',
     
     // Stock Processing
     stockRowsRead: 'stock rows read',

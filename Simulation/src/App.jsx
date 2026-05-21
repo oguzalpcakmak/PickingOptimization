@@ -69,7 +69,7 @@ const SOLVER_PROFILES = {
 };
 
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [lang, setLang] = useState('tr');
   const [file, setFile] = useState(null);
   const [rawData, setRawData] = useState(null);
@@ -92,6 +92,7 @@ function App() {
   const [solverTimeLimit, setSolverTimeLimit] = useState(120);
   const [solverSummary, setSolverSummary] = useState(null);
   const [solverInputStats, setSolverInputStats] = useState(null);
+  const [showDetailedView, setShowDetailedView] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -682,40 +683,60 @@ function App() {
                 <Card 
                   style={{ 
                     height: '100%', 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    justifyContent: 'center',
                     background: isDarkMode ? '#1f1f1f' : '#fafafa',
-                    border: '2px dashed #faad14'
+                    border: `1px solid ${isDarkMode ? '#303030' : '#d9e2ec'}`
                   }}
                 >
                   <Flex vertical align="center" gap={16}>
-                    <ExperimentOutlined style={{ fontSize: 48, color: '#faad14' }} />
-                    <Button 
-                      type="primary" 
-                      icon={<ExperimentOutlined />} 
-                      size="large"
-                      onClick={loadTestData}
-                      style={{ background: '#faad14', borderColor: '#faad14' }}
-                    >
-                      {t(lang, 'loadTestData')}
-                    </Button>
-                    <Upload
-                      accept=".csv,.xlsx,.xls"
-                      showUploadList={false}
-                      beforeUpload={handleAlternativeUpload}
-                    >
-                      <Button
-                        icon={<EnvironmentOutlined />}
-                        size="large"
-                        style={{ borderColor: '#13c2c2', color: '#13c2c2' }}
+                    <Flex align="center" justify="space-between" style={{ width: '100%' }}>
+                      <Text strong>{t(lang, 'detailedView')}</Text>
+                      <Switch checked={showDetailedView} onChange={setShowDetailedView} />
+                    </Flex>
+
+                    {showDetailedView && (
+                      <Flex vertical align="center" gap={16} style={{ width: '100%' }}>
+                        <ExperimentOutlined style={{ fontSize: 40, color: '#b7791f' }} />
+                        <Button 
+                          type="primary" 
+                          icon={<ExperimentOutlined />} 
+                          size="large"
+                          onClick={loadTestData}
+                          style={{ background: '#b7791f', borderColor: '#b7791f' }}
+                        >
+                          {t(lang, 'loadTestData')}
+                        </Button>
+                        <Upload
+                          accept=".csv,.xlsx,.xls"
+                          showUploadList={false}
+                          beforeUpload={handleAlternativeUpload}
+                        >
+                          <Button
+                            icon={<EnvironmentOutlined />}
+                            size="large"
+                            style={{ borderColor: '#0f766e', color: '#0f766e' }}
+                          >
+                            {t(lang, 'uploadAlternativeFile')}
+                          </Button>
+                        </Upload>
+                        <Text type="secondary" style={{ textAlign: 'center' }}>
+                          {t(lang, 'uploadAlternativeHint')}
+                        </Text>
+                      </Flex>
+                    )}
+
+                    {!showDetailedView && (
+                      <Text 
+                        type="secondary" 
+                        style={{ 
+                          textAlign: 'center',
+                          minHeight: 74,
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
                       >
-                        {t(lang, 'uploadAlternativeFile')}
-                      </Button>
-                    </Upload>
-                    <Text type="secondary" style={{ textAlign: 'center' }}>
-                      {t(lang, 'uploadAlternativeHint')}
-                    </Text>
+                        {t(lang, 'detailedViewHint')}
+                      </Text>
+                    )}
                   </Flex>
                 </Card>
               </Col>
