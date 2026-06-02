@@ -101,8 +101,9 @@ Uygulama varsayılan olarak `http://localhost:5173` adresinde çalışacaktır.
 #### Client-side WASM solver ile çalıştırma
 
 ```bash
-npm run wasm:sync
 npm run dev
+# C++ degisikliklerinden sonra yeniden derlemek icin:
+npm run wasm:sync
 ```
 
 UI, Excel workbook'ünü client-side modlarda bir Web Worker'a aktarır. Worker solver input
@@ -117,7 +118,8 @@ Dropdown dört çözüm modu sunar:
 - `Server-side kaliteli çözüm`
 - `Server-side hızlı çözüm`
 
-`npm run build`, WASM asset'lerini otomatik olarak yeniden üretip `public/wasm` altına kopyalar.
+`npm run dev`, eksik WASM asset'lerini otomatik olarak üretir. `npm run wasm:sync` asset'leri
+zorla yeniden üretir. `npm run build` de WASM asset'lerini yeniden üretip `public/wasm` altına kopyalar.
 Lokal smoke Excel'i `npm run fixture:wasm`, full stres Excel'i ise `npm run fixture:wasm:full`
 komutuyla yeniden üretilebilir.
 
@@ -254,16 +256,18 @@ The application will run at `http://localhost:5173` by default.
 #### Running with the client-side WASM solver
 
 ```bash
-npm run wasm:sync
 npm run dev
+# Force a rebuild after C++ changes:
+npm run wasm:sync
 ```
 
 In client-side modes, the UI transfers the Excel workbook to a Web Worker. The worker prepares
 the solver input CSVs and runs either the LKH-free main module or the separate `lkh.wasm` module
 while the main UI thread stays responsive. Start the native API with `npm run api` for server-side
 modes. The dropdown exposes client-side with LKH, client-side without LKH, server-side quality,
-and server-side fast modes. `npm run build` regenerates the WASM assets and copies them under
-`public/wasm` automatically.
+and server-side fast modes. `npm run dev` generates missing WASM assets automatically.
+`npm run wasm:sync` forces a rebuild, and `npm run build` regenerates the WASM assets and copies
+them under `public/wasm` automatically.
 Regenerate the local smoke Excel with `npm run fixture:wasm`, or the full stress Excel with
 `npm run fixture:wasm:full`.
 

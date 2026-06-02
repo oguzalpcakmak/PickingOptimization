@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOLVER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 EMSDK_DIR="${EMSDK_DIR:-$HOME/.local/share/emsdk}"
+export PATH="$HOME/.local/bin:$PATH"
 
 if [[ ! -f "$EMSDK_DIR/emsdk_env.sh" ]]; then
   echo "Emscripten SDK not found at $EMSDK_DIR" >&2

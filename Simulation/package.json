@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "api": "node server/index.js",
+    "predev": "node scripts/run_wasm_sync.mjs --if-missing",
     "dev": "vite",
     "fixture:wasm": "node scripts/create_wasm_fixture.mjs",
     "fixture:wasm:full": "node scripts/create_wasm_fixture.mjs --full",
-    "wasm:sync": "./scripts/sync_wasm.sh",
+    "wasm:sync": "node scripts/run_wasm_sync.mjs",
     "build": "npm run wasm:sync && vite build",
     "preview": "vite preview",
     "start": "node server/index.js"

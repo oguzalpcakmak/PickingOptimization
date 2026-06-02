@@ -32,12 +32,26 @@ function sheetToRows(workbook, sheetName) {
     .filter((row) => !isRowEmpty(row));
 }
 
+async function importWasmFactory(fileName) {
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  const moduleUrl = new URL(`${baseUrl}wasm/${fileName}`, self.location.origin);
+  const response = await fetch(moduleUrl, { method: 'HEAD' });
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!response.ok || contentType.includes('text/html')) {
+    throw new Error(
+      `WASM modulu bulunamadi: ${fileName}. Simulation dizininde "npm run wasm:sync" komutunu calistirin.`
+    );
+  }
+
+  return (await import(/* @vite-ignore */ moduleUrl.href)).default;
+}
+
 async function loadWasm() {
   if (!wasmPromise) {
     wasmPromise = (async () => {
       const baseUrl = import.meta.env.BASE_URL || '/';
-      const moduleUrl = new URL(`${baseUrl}wasm/picking_solver.mjs`, self.location.origin);
-      const createPickingSolver = (await import(/* @vite-ignore */ moduleUrl.href)).default;
+      const createPickingSolver = await importWasmFactory('picking_solver.mjs');
 
       return createPickingSolver({
         locateFile(file) {
@@ -52,11 +66,7 @@ async function loadWasm() {
 
 async function loadLkhFactory() {
   if (!lkhFactoryPromise) {
-    lkhFactoryPromise = (async () => {
-      const baseUrl = import.meta.env.BASE_URL || '/';
-      const moduleUrl = new URL(`${baseUrl}wasm/lkh.mjs`, self.location.origin);
-      return (await import(/* @vite-ignore */ moduleUrl.href)).default;
-    })();
+    lkhFactoryPromise = importWasmFactory('lkh.mjs');
   }
 
   return lkhFactoryPromise;
