@@ -6,7 +6,10 @@
   "scripts": {
     "api": "node server/index.js",
     "dev": "vite",
-    "build": "vite build",
+    "fixture:wasm": "node scripts/create_wasm_fixture.mjs",
+    "fixture:wasm:full": "node scripts/create_wasm_fixture.mjs --full",
+    "wasm:sync": "./scripts/sync_wasm.sh",
+    "build": "npm run wasm:sync && vite build",
     "preview": "vite preview",
     "start": "node server/index.js"
   },

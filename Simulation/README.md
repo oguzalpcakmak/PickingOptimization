@@ -25,7 +25,7 @@ Toplama süreci verilerini kullanarak depo içi toplama süreçlerini görselle�
 - 🌐 **Çoklu Dil Desteği**: Türkçe ve İngilizce
 - ⬇️ **Excel Çıktısı**: İşlenmiş verileri Excel formatında indirebilme
 - 🧪 **Test Verisi**: Hızlı test için gömülü örnek veri
-- ⚙️ **C++ Solver Entegrasyonu**: Aynı Excel dosyasındaki pick ve stok sheet'lerinden optimize rota üretebilme
+- ⚙️ **Seçilebilir Solver Modları**: Client-side WASM veya native server çözümünü seçebilme
 
 ### 🏗️ Depo Layout Parametreleri
 
@@ -41,7 +41,7 @@ Toplama süreci verilerini kullanarak depo içi toplama süreçlerini görselle�
 ### 📥 Excel Dosyası Formatı
 
 Yüklenen Excel dosyasında **"Grup Toplama Verisi"** isimli bir sayfa (sheet) bulunmalıdır.
-C++ solver çalıştırmak için aynı dosyada ayrıca **"Stok Bilgisi"** sheet'i bulunmalıdır.
+WASM solver çalıştırmak için aynı dosyada ayrıca **"Stok Bilgisi"** sheet'i bulunmalıdır.
 
 #### Gerekli Kolonlar
 
@@ -59,7 +59,7 @@ C++ solver çalıştırmak için aynı dosyada ayrıca **"Stok Bilgisi"** sheet'
 | `Z` | Sol/Sağ (L/R) |
 | `TOPLANAN_ADET` | Toplanan adet |
 
-#### C++ Solver Stok Sheet Kolonları
+#### WASM Solver Stok Sheet Kolonları
 
 | Kolon Adı | Açıklama |
 |-----------|----------|
@@ -78,6 +78,7 @@ C++ solver çalıştırmak için aynı dosyada ayrıca **"Stok Bilgisi"** sheet'
 
 - Node.js 18+
 - npm veya yarn
+- Emscripten SDK (`~/.local/share/emsdk` veya `EMSDK_DIR`)
 
 #### Adımlar
 
@@ -97,24 +98,46 @@ npm run dev
 
 Uygulama varsayılan olarak `http://localhost:5173` adresinde çalışacaktır.
 
-#### C++ Solver API ile çalıştırma
+#### Client-side WASM solver ile çalıştırma
 
 ```bash
-# Terminal 1: API
-npm run api
-
-# Terminal 2: Vite UI
+npm run wasm:sync
 npm run dev
 ```
 
-API varsayılan olarak `http://localhost:5174` üzerinde çalışır ve Vite `/api` isteklerini buraya proxy eder. Production için:
+UI, Excel workbook'ünü client-side modlarda bir Web Worker'a aktarır. Worker solver input
+CSV'lerini hazırlar ve seçime göre LKH'siz ana modülü veya ayrı `lkh.wasm` modülünü çalıştırır;
+çözüm sırasında ana UI thread'i kullanılabilir kalır. Server-side modlar için native API akışını
+`npm run api` komutuyla başlatın.
+
+Dropdown dört çözüm modu sunar:
+
+- `Client-side LKH'li`
+- `Client-side LKH'siz`
+- `Server-side kaliteli çözüm`
+- `Server-side hızlı çözüm`
+
+`npm run build`, WASM asset'lerini otomatik olarak yeniden üretip `public/wasm` altına kopyalar.
+Lokal smoke Excel'i `npm run fixture:wasm`, full stres Excel'i ise `npm run fixture:wasm:full`
+komutuyla yeniden üretilebilir.
+
+#### Production feature flag ve deploy
+
+LKH'nin repo içindeki lisans notu araştırma kullanımıyla sınırlıdır. Redistribüsyon izni
+onaylanmadan production build'i şu şekilde alın:
 
 ```bash
-npm run build
-npm start
+VITE_ENABLE_CLIENT_LKH=false npm run build
 ```
 
-Server varsayılan olarak `../cpp_solver/build/picking_current_best_cpp` binary'sini ve `../external/LKH-3.0.14/LKH` LKH binary'sini kullanır. Farklı path gerekiyorsa `CPP_SOLVER_PATH` ve `LKH_PATH` environment variable'ları verilebilir.
+Bu flag dropdown'daki client-side LKH seçeneğini kapatır ve `lkh.mjs/lkh.wasm` asset'lerini
+production bundle'dan çıkarır. Onay sonrası `VITE_ENABLE_CLIENT_LKH=true npm run build`
+kullanılabilir. Örnek production ayarı `.env.production.example` dosyasındadır.
+
+Worker çıktısındaki runtime metadata; toplam süreyi, seed-route optimizer modunu, LKH instance
+hazırlama süresini, LKH çözüm süresini ve çözülen kat sayısını içerir. Server yanıtı da native
+request süresini döndürür. Production hata takibi bu metadata ve `[solver-worker]` logları
+üzerinden izleme sistemine aktarılabilir.
 
 ### 📦 Üretim Derlemesi
 
@@ -155,7 +178,7 @@ A web application that visualizes warehouse picking processes using picking data
 - 🌐 **Multi-language Support**: Turkish and English
 - ⬇️ **Excel Export**: Download processed data in Excel format
 - 🧪 **Test Data**: Embedded sample data for quick testing
-- ⚙️ **C++ Solver Integration**: Generate optimized routes from pick and stock sheets in the same Excel file
+- ⚙️ **Selectable Solver Modes**: Choose client-side WASM or native server execution
 
 ### 🏗️ Warehouse Layout Parameters
 
@@ -171,7 +194,7 @@ A web application that visualizes warehouse picking processes using picking data
 ### 📥 Excel File Format
 
 The uploaded Excel file must contain a sheet named **"Grup Toplama Verisi"**.
-Running the C++ solver also requires a **"Stok Bilgisi"** sheet in the same workbook.
+Running the WASM solver also requires a **"Stok Bilgisi"** sheet in the same workbook.
 
 #### Required Columns
 
@@ -189,7 +212,7 @@ Running the C++ solver also requires a **"Stok Bilgisi"** sheet in the same work
 | `Z` | Left/Right (L/R) |
 | `TOPLANAN_ADET` | Picked quantity |
 
-#### C++ Solver Stock Sheet Columns
+#### WASM Solver Stock Sheet Columns
 
 | Column Name | Description |
 |-------------|-------------|
@@ -208,6 +231,7 @@ Running the C++ solver also requires a **"Stok Bilgisi"** sheet in the same work
 
 - Node.js 18+
 - npm or yarn
+- Emscripten SDK (`~/.local/share/emsdk` or `EMSDK_DIR`)
 
 #### Steps
 
@@ -227,24 +251,35 @@ npm run dev
 
 The application will run at `http://localhost:5173` by default.
 
-#### Running with the C++ Solver API
+#### Running with the client-side WASM solver
 
 ```bash
-# Terminal 1: API
-npm run api
-
-# Terminal 2: Vite UI
+npm run wasm:sync
 npm run dev
 ```
 
-The API runs at `http://localhost:5174` by default, and Vite proxies `/api` requests to it. For production:
+In client-side modes, the UI transfers the Excel workbook to a Web Worker. The worker prepares
+the solver input CSVs and runs either the LKH-free main module or the separate `lkh.wasm` module
+while the main UI thread stays responsive. Start the native API with `npm run api` for server-side
+modes. The dropdown exposes client-side with LKH, client-side without LKH, server-side quality,
+and server-side fast modes. `npm run build` regenerates the WASM assets and copies them under
+`public/wasm` automatically.
+Regenerate the local smoke Excel with `npm run fixture:wasm`, or the full stress Excel with
+`npm run fixture:wasm:full`.
+
+#### Production feature flag and deployment
+
+The bundled LKH license note restricts its use to research. Until redistribution permission is
+confirmed, build production assets with:
 
 ```bash
-npm run build
-npm start
+VITE_ENABLE_CLIENT_LKH=false npm run build
 ```
 
-By default the server uses `../cpp_solver/build/picking_current_best_cpp` and `../external/LKH-3.0.14/LKH`. Override them with `CPP_SOLVER_PATH` and `LKH_PATH` when hosting on another machine.
+This disables the client-side LKH dropdown option and omits `lkh.mjs/lkh.wasm` from the
+production bundle. Runtime metadata contains the selected optimizer and timing breakdown for
+performance monitoring. Forward worker error logs and server errors to the production
+observability platform.
 
 ### 📦 Production Build
 

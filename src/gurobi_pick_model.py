@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass
@@ -156,6 +157,7 @@ class InstanceData:
 class ModelArtifacts:
     model: Any
     instance: InstanceData
+    config: ModelConfig
     y: dict[str, Any]
     u: dict[str, Any]
     v: dict[tuple[str, str], Any]
@@ -183,6 +185,32 @@ def _safe_int(value: Any) -> int | None:
         return int(text)
     except ValueError:
         return None
+
+
+def _row_has_values(row: Mapping[str, Any]) -> bool:
+    return any(str(value).strip() for value in row.values() if value is not None)
+
+
+def _require_columns(
+    reader: csv.DictReader,
+    path: Path,
+    required_columns: Iterable[str],
+) -> set[str]:
+    columns = set(reader.fieldnames or [])
+    missing = sorted(set(required_columns) - columns)
+    if missing:
+        raise DataValidationError(
+            f"Missing required columns in {path}: {', '.join(missing)}"
+        )
+    return columns
+
+
+def _first_nonblank(row: Mapping[str, Any], *columns: str) -> Any:
+    for column in columns:
+        value = row.get(column)
+        if value is not None and str(value).strip():
+            return value
+    return None
 
 
 def _normalize_floor(value: Any) -> str | None:
@@ -338,13 +366,20 @@ def load_demands(csv_path: str | Path) -> list[DemandRecord]:
     demand_totals: dict[int, int] = defaultdict(int)
 
     with path.open(newline="", encoding="utf-8-sig") as handle:
-        for row in csv.DictReader(handle):
+        reader = csv.DictReader(handle)
+        _require_columns(reader, path, {"ARTICLE_CODE", "AMOUNT"})
+        for row_number, row in enumerate(reader, start=2):
+            if not _row_has_values(row):
+                continue
             article_code = _safe_int(row.get("ARTICLE_CODE"))
             amount = _safe_int(row.get("AMOUNT"))
             if article_code is None or amount is None:
-                continue
-            if amount < 0:
-                raise DataValidationError(f"Negative demand detected for article {article_code}.")
+                raise DataValidationError(
+                    f"Invalid demand row {row_number} in {path}: "
+                    "ARTICLE_CODE and AMOUNT must be integers."
+                )
+            if amount <= 0:
+                raise DataValidationError(f"Non-positive demand detected for article {article_code}.")
             demand_totals[article_code] += amount
 
     return [DemandRecord(article_code=article, amount=amount) for article, amount in sorted(demand_totals.items())]
@@ -358,19 +393,40 @@ def load_stock(csv_path: str | Path) -> list[StockRecord]:
     aggregated: dict[tuple[Any, ...], int] = defaultdict(int)
 
     with path.open(newline="", encoding="utf-8-sig") as handle:
-        for row in csv.DictReader(handle):
+        reader = csv.DictReader(handle)
+        columns = _require_columns(
+            reader,
+            path,
+            {"THM_ID", "ARTICLE_CODE", "FLOOR", "AISLE", "COLUMN", "SHELF"},
+        )
+        if not {"STOCK", "STOCK_AMOUNT"} & columns:
+            raise DataValidationError(
+                f"Missing required stock column in {path}: expected STOCK or STOCK_AMOUNT."
+            )
+        if not {"RIGHT_OR_LEFT", "LEFT_OR_RIGHT"} & columns:
+            raise DataValidationError(
+                f"Missing required side column in {path}: "
+                "expected RIGHT_OR_LEFT or LEFT_OR_RIGHT."
+            )
+
+        for row_number, row in enumerate(reader, start=2):
+            if not _row_has_values(row):
+                continue
             article_code = _safe_int(row.get("ARTICLE_CODE"))
             aisle = _safe_int(row.get("AISLE"))
             column = _safe_int(row.get("COLUMN"))
             shelf = _safe_int(row.get("SHELF"))
-            stock = _safe_int(row.get("STOCK"))
+            stock = _safe_int(_first_nonblank(row, "STOCK", "STOCK_AMOUNT"))
             floor = _normalize_floor(row.get("FLOOR"))
             # Accept both the original sample header and the renamed variant.
-            side = _normalize_side(row.get("RIGHT_OR_LEFT") or row.get("LEFT_OR_RIGHT"))
+            side = _normalize_side(_first_nonblank(row, "RIGHT_OR_LEFT", "LEFT_OR_RIGHT"))
             thm_id = str(row.get("THM_ID", "")).strip()
 
             if None in (article_code, aisle, column, shelf, stock) or floor is None or side is None or not thm_id:
-                continue
+                raise DataValidationError(
+                    f"Invalid stock row {row_number} in {path}: "
+                    "location fields and stock amount must be present and valid."
+                )
             if stock <= 0:
                 continue
 
@@ -378,7 +434,7 @@ def load_stock(csv_path: str | Path) -> list[StockRecord]:
                 raise DataValidationError(f"Invalid aisle {aisle} for article {article_code}.")
             if not (1 <= column <= TOTAL_COLUMNS):
                 raise DataValidationError(f"Invalid column {column} for article {article_code}.")
-            if shelf <= 0:
+            if not (1 <= shelf <= 7):
                 raise DataValidationError(f"Invalid shelf {shelf} for article {article_code}.")
 
             key = (thm_id, article_code, floor, aisle, side, column, shelf)
@@ -727,17 +783,19 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
     # Kat değişimi artık cross-floor yaylarla modellenmez. Onun yerine amaç
     # fonksiyonunda aktif kat sayısına bağlı ek bir ceza tutulur. "İlk kat ücretsiz,
     # her ek kat bir switch" mantığı lineer modelde sabit terim farkı dışında
-    # sum(z_j1) ile eşdeğerdir; bu yüzden switch cezası doğrudan sum(z_j1) üzerine eklenir.
+    # sum(z_j1) ile eşdeğerdir. Uygulama raporlamasını da açık tutmak için sabit
+    # fark çıkarılır ve yalnızca ilk kattan sonraki aktif katlar ücretlendirilir.
     #
     # Terim 1: "Toplam yürünen Manhattan mesafesi."
     # Terim 2: "Toplam kullanılan (açılan) THM kutusu sayısı."
     # Terim 3: "Toplam girilen (aktifleşen) kat sayısı" + kat geçiş cezası.
     floor_activation_term = gp.quicksum(z[floor_id] for floor_id in floor_ids)
+    extra_active_floor_term = floor_activation_term - 1.0
     model.setObjective(
         config.distance_weight * gp.quicksum(instance.distances[arc] * v[arc] for arc in arc_index)
         + config.thm_weight * gp.quicksum(b[thm_id] for thm_id in thm_ids)
         + config.floor_weight * floor_activation_term
-        + config.cross_floor_penalty_per_floor * floor_activation_term,
+        + config.cross_floor_penalty_per_floor * extra_active_floor_term,
         GRB.MINIMIZE,
     )
 
@@ -855,7 +913,7 @@ def build_gurobi_model(instance: InstanceData, config: ModelConfig | None = None
                 )
 
     model.update()
-    return ModelArtifacts(model=model, instance=instance, y=y, u=u, v=v, p=p, z=z, b=b)
+    return ModelArtifacts(model=model, instance=instance, config=config, y=y, u=u, v=v, p=p, z=z, b=b)
 
 
 def build_model_from_csv(
@@ -921,6 +979,102 @@ def extract_solution(artifacts: ModelArtifacts, tolerance: float = 1e-6) -> dict
         "active_floors": active_floors,
         "active_thms": active_thms,
     }
+
+
+def _status_name(status_code: int) -> str:
+    _require_gurobi()
+    status_names = {
+        GRB.LOADED: "LOADED",
+        GRB.OPTIMAL: "OPTIMAL",
+        GRB.INFEASIBLE: "INFEASIBLE",
+        GRB.INF_OR_UNBD: "INF_OR_UNBD",
+        GRB.UNBOUNDED: "UNBOUNDED",
+        GRB.CUTOFF: "CUTOFF",
+        GRB.ITERATION_LIMIT: "ITERATION_LIMIT",
+        GRB.NODE_LIMIT: "NODE_LIMIT",
+        GRB.TIME_LIMIT: "TIME_LIMIT",
+        GRB.SOLUTION_LIMIT: "SOLUTION_LIMIT",
+        GRB.INTERRUPTED: "INTERRUPTED",
+        GRB.NUMERIC: "NUMERIC",
+        GRB.SUBOPTIMAL: "SUBOPTIMAL",
+        GRB.INPROGRESS: "INPROGRESS",
+        GRB.USER_OBJ_LIMIT: "USER_OBJ_LIMIT",
+    }
+    return status_names.get(status_code, f"UNKNOWN_{status_code}")
+
+
+def _optional_model_float(model: Any, attribute: str) -> float | None:
+    try:
+        return float(getattr(model, attribute))
+    except Exception:
+        return None
+
+
+def build_solver_summary(artifacts: ModelArtifacts) -> dict[str, Any]:
+    model = artifacts.model
+    instance = artifacts.instance
+    config = artifacts.config
+    has_solution = model.SolCount > 0
+
+    summary: dict[str, Any] = {
+        "status": _status_name(model.Status),
+        "status_code": int(model.Status),
+        "has_solution": has_solution,
+        "is_optimal": model.Status == GRB.OPTIMAL,
+        "objective_value": _optional_model_float(model, "ObjVal") if has_solution else None,
+        "best_bound": _optional_model_float(model, "ObjBound"),
+        "mip_gap": _optional_model_float(model, "MIPGap") if has_solution else None,
+        "runtime": _optional_model_float(model, "Runtime"),
+        "variables": int(model.NumVars),
+        "constraints": int(model.NumConstrs),
+        "routing_arcs": len(artifacts.v),
+        "articles": len(instance.demands),
+        "stock_locations": len(instance.stock_records),
+        "physical_nodes": len(instance.physical_nodes),
+        "weights": {
+            "distance": config.distance_weight,
+            "thm": config.thm_weight,
+            "floor": config.floor_weight,
+            "cross_floor_penalty_per_extra_floor": config.cross_floor_penalty_per_floor,
+        },
+    }
+
+    if not has_solution:
+        return summary
+
+    solution = extract_solution(artifacts)
+    route_distance = sum(instance.distances[arc] for arc in solution["active_arcs"])
+    active_floor_count = len(solution["active_floors"])
+    active_thm_count = len(solution["active_thms"])
+    summary.update(
+        {
+            "distance": route_distance,
+            "floors": active_floor_count,
+            "thms": active_thm_count,
+            "pick_rows": len(solution["picked_locations"]),
+            "visited_nodes": len(solution["active_nodes"]),
+            "active_floors": solution["active_floors"],
+            "active_thms": solution["active_thms"],
+            "objective_breakdown": {
+                "distance": config.distance_weight * route_distance,
+                "thm": config.thm_weight * active_thm_count,
+                "floor": config.floor_weight * active_floor_count,
+                "cross_floor_penalty": (
+                    config.cross_floor_penalty_per_floor * max(0, active_floor_count - 1)
+                ),
+            },
+        }
+    )
+    return summary
+
+
+def write_summary_json(artifacts: ModelArtifacts, json_path: str | Path) -> Path:
+    output_path = Path(json_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(build_solver_summary(artifacts), handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return output_path
 
 
 def _ordered_route_nodes_by_floor(
@@ -1302,7 +1456,14 @@ def _parse_article_list(value: str | None) -> list[int] | None:
 def _parse_floor_list(value: str | None) -> list[str] | None:
     if value is None or not value.strip():
         return None
-    return [token.strip().upper() for token in value.split(",") if token.strip()]
+    floors = [token.strip().upper() for token in value.split(",") if token.strip()]
+    invalid_floors = sorted(set(floors) - set(FLOOR_ORDER))
+    if invalid_floors:
+        raise DataValidationError(
+            f"Unknown floors: {', '.join(invalid_floors)}. "
+            f"Expected one or more of: {', '.join(FLOOR_ORDER)}."
+        )
+    return floors
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1314,9 +1475,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--suggest-floor-test", default=None, help="Suggest an easy feasible subset for one floor.")
     parser.add_argument("--max-test-items", type=int, default=5, help="Maximum items for --suggest-floor-test.")
     parser.add_argument("--distance-weight", type=float, default=1.0)
-    parser.add_argument("--thm-weight", type=float, default=1.0)
-    parser.add_argument("--floor-weight", type=float, default=1.0)
-    parser.add_argument("--cross-floor-penalty", type=float, default=0.0)
+    parser.add_argument("--thm-weight", type=float, default=15.0)
+    parser.add_argument("--floor-weight", type=float, default=30.0)
+    parser.add_argument(
+        "--cross-floor-penalty",
+        type=float,
+        default=0.0,
+        help="Additional penalty charged for each extra active floor beyond the first.",
+    )
     parser.add_argument(
         "--max-route-arcs",
         type=int,
@@ -1347,6 +1513,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--summary-output",
+        default=None,
+        help="Optional JSON output path for status, bound, gap, runtime, and solution metrics.",
+    )
+    parser.add_argument(
         "--distance-matrix-output",
         default=None,
         help=(
@@ -1373,10 +1544,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--mip-gap",
         type=float,
-        default=0.05,
+        default=0.0,
         help=(
-            "Relative MIP optimality gap target. Default is 0.05 (5%%). "
-            "Use 0 for an exact proven-optimal solve."
+            "Relative MIP optimality gap target. Defaults to 0 for a proven-optimal "
+            "exact solve; pass a positive value for practical early stopping."
         ),
     )
     args = parser.parse_args(argv)
@@ -1460,6 +1631,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.optimize:
         artifacts.model.optimize()
+        summary = build_solver_summary(artifacts)
+        print(f"Status: {summary['status']}")
+        print(f"Best bound: {summary['best_bound']}")
+        print(f"MIP gap: {summary['mip_gap']}")
+        print(f"Solve runtime: {summary['runtime']}")
+        if args.summary_output:
+            summary_output_path = write_summary_json(artifacts, args.summary_output)
+            print(f"Summary written to {summary_output_path}")
         if artifacts.model.SolCount > 0:
             solution = extract_solution(artifacts)
             print(f"Objective: {solution['objective_value']:.4f}")

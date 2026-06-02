@@ -42,12 +42,16 @@
     \item $j_6 \in J_6$: THM (Taşıma Hazırlama Merkezi) kodu
     \item $j = (j_1, j_2, j_3, j_4, j_5, j_6)$: 6 boyutlu tam lokasyon indisi, $j \in J$
     \item $n, m = (j_1, j_2, j_4)$: 3 boyutlu fiziksel konum indisi, $n, m \in N$
+    \item $N(j_1)$: $j_1$ katındaki fiziksel konumlar kümesi
+    \item $0_{j_1}$: $j_1$ katı için sanal giriş/çıkış deposu
+    \item $A(j_1)$: $j_1$ katındaki konumlar ve $0_{j_1}$ deposu arasındaki yönlü rota yayları kümesi
 \end{itemize}
 
 \section{Parametreler}
 
 \begin{itemize}
-    \item $d_{n,m}$: $n$ konumu ile $m$ konumu arasındaki Manhattan mesafesi
+    \item $d_{n,m}$: Aynı kattaki $n$ konumu ile $m$ konumu arasındaki Manhattan mesafesi
+    \item $d_{0,n}$, $d_{n,0}$: Kat deposu ile $n$ konumu arasındaki giriş/çıkış mesafesi
     \item $s_{ij}$: $i$ ürününün $j$ lokasyonundaki mevcut stok miktarı
     \item $t_i$: $i$ ürününden toplanması gereken toplam miktar
     \item $w_1, w_2, w_3$: Amaç fonksiyonu ağırlıkları (Sırasıyla mesafe, kutu sayısı ve kat sayısı için)
@@ -56,10 +60,9 @@
 \section{Karar Değişkenleri}
 
 \begin{itemize}
-    \item $x_{ij} \in \{0, 1\}$: $i$ ürününün $j$ lokasyonundan toplanıp toplanmama durumu
-    \item $y_{ij} \geq 0$: $i$ ürününün $j$ lokasyonundan toplanan miktarı
+    \item $y_{ij} \in \{0\} \cup \mathbb{Z}_{\geq 1}$: $i$ ürününün $j$ lokasyonundan toplanan miktarı
     \item $u_n \in \{0, 1\}$: $n$ konumunun ziyaret edilip edilmeme durumu
-    \item $v_{n,m} \in \{0, 1\}$: $n$ konumundan $m$ konumuna doğrudan gidilme durumu
+    \item $v_{n,m} \in \{0, 1\}$: $(n,m) \in A(j_1)$ yayı üzerinden doğrudan gidilme durumu
     \item $p_n$: $n$ konumunun tur içindeki ziyaret sırası (MTZ kısıtı için)
     \item $z_{j_1} \in \{0, 1\}$: $j_1$ numaralı kata girilip girilmediği durumu
     \item $b_{j_6} \in \{0, 1\}$: $j_6$ numaralı THM kutusunun açılıp açılmadığı durumu
@@ -68,7 +71,9 @@
 \section{Amaç Fonksiyonu}
 
 \begin{equation}
-    \min Z = w_1 \sum_{n \in N} \sum_{m \in N} d_{n,m} v_{n,m} + w_2 \sum_{j_6 \in J_6} b_{j_6} + w_3 \sum_{j_1 \in J_1} z_{j_1}
+    \min Z = w_1 \sum_{j_1 \in J_1} \sum_{(n,m) \in A(j_1)} d_{n,m} v_{n,m}
+    + w_2 \sum_{j_6 \in J_6} b_{j_6}
+    + w_3 \sum_{j_1 \in J_1} z_{j_1}
 \end{equation}
 
 \noindent \textbf{Terim Açıklamaları:}
@@ -81,25 +86,36 @@
 \section{Kısıtlar}
 
 \begin{flalign}
-    & y_{ij} \leq x_{ij} \cdot s_{ij} & \forall i \in I, \forall j \in J \label{cons:stok} \\
-    & x_{ij} \leq b_{j_6} & \forall i \in I, \forall j \in J \label{cons:thm} \\
+    & 0 \leq y_{ij} \leq s_{ij} \cdot b_{j_6} & \forall i \in I, \forall j \in J \label{cons:stok} \\
+    & y_{ij} \leq s_{ij} \cdot u_n & \forall i \in I, \forall n \in N, \forall j \in J(n) \label{cons:ziyaret} \\
     & \sum_{j \in J} y_{ij} = t_i & \forall i \in I \label{cons:talep} \\
-    & x_{ij} \leq u_n & \forall i \in I, \forall n \in N, \forall j \in J(n) \label{cons:ziyaret} \\
+    & u_n \leq \sum_{i \in I} \sum_{j \in J(n)} y_{ij} & \forall n \in N \label{cons:ziyaretters} \\
     & u_n \leq z_{j_1} & \forall j_1 \in J_1, \forall n \in N(j_1) \label{cons:kat} \\
-    & \sum_{m \in N} v_{n,m} = u_n & \forall n \in N \label{cons:flow1} \\
-    & \sum_{m \in N} v_{m,n} = u_n & \forall n \in N \label{cons:flow2} \\
-    & p_n - p_m + |N| \cdot v_{n,m} \leq |N| - 1 & \forall n, m \in N, n \neq m \label{cons:mtz}
+    & z_{j_1} \leq \sum_{n \in N(j_1)} u_n & \forall j_1 \in J_1 \label{cons:katter} \\
+    & b_{j_6} \leq \sum_{i \in I} \sum_{j \in J(j_6)} y_{ij} & \forall j_6 \in J_6 \label{cons:thmters} \\
+    & \sum_{m:(n,m) \in A(j_1)} v_{n,m} = u_n & \forall j_1 \in J_1, \forall n \in N(j_1) \label{cons:flow1} \\
+    & \sum_{m:(m,n) \in A(j_1)} v_{m,n} = u_n & \forall j_1 \in J_1, \forall n \in N(j_1) \label{cons:flow2} \\
+    & \sum_{n \in N(j_1)} v_{0_{j_1},n} = z_{j_1} & \forall j_1 \in J_1 \label{cons:depotout} \\
+    & \sum_{n \in N(j_1)} v_{n,0_{j_1}} = z_{j_1} & \forall j_1 \in J_1 \label{cons:depotin} \\
+    & u_n \leq p_n \leq |N(j_1)| \cdot u_n & \forall j_1 \in J_1, \forall n \in N(j_1) \label{cons:mtzbound} \\
+    & p_n - p_m + |N(j_1)| \cdot v_{n,m} \leq |N(j_1)| - 1 & \forall j_1 \in J_1, \forall n, m \in N(j_1), n \neq m \label{cons:mtz}
 \end{flalign}
 
 \noindent \textbf{Kısıt Açıklamaları:}
 \begin{itemize}
-    \item \textbf{(\ref{cons:stok})}: Bir lokasyondan toplanan ürün miktarı, o lokasyondaki stok miktarını geçemez.
-    \item \textbf{(\ref{cons:thm})}: Eğer bir lokasyondan ürün toplandıysa, ilgili THM kutusu açılmış sayılır.
+    \item \textbf{(\ref{cons:stok})}: Pozitif toplama yapılan bir lokasyonun ilgili THM kutusu açılmış sayılır ve toplanan miktar stok miktarını geçemez.
     \item \textbf{(\ref{cons:talep})}: Her ürün için toplanması gereken toplam miktar sağlanmalıdır.
     \item \textbf{(\ref{cons:ziyaret})}: Ürün toplama yapılan her lokasyonun bulunduğu fiziksel konuma uğranmış olmalıdır.
-    \item \textbf{(\ref{cons:kat})}: Eğer bir konuma gidildiyse, o konumun bulunduğu kat ziyaret edilmiş sayılır.
+    \item \textbf{(\ref{cons:ziyaretters})}: Ziyaret değişkeni yalnızca ilgili fiziksel konumda gerçekten toplama yapılıyorsa açılabilir.
+    \item \textbf{(\ref{cons:kat})-(\ref{cons:katter})}: Kat değişkeni yalnızca o katta en az bir fiziksel konum ziyaret ediliyorsa açılabilir.
+    \item \textbf{(\ref{cons:thmters})}: THM değişkeni yalnızca o THM altında gerçekten toplama yapılıyorsa açılabilir.
     \item \textbf{(\ref{cons:flow1})-(\ref{cons:flow2})}: Akış korunumu kısıtları. Bir noktaya girildiyse oradan çıkılmalıdır.
-    \item \textbf{(\ref{cons:mtz})}: Miller-Tucker-Zemlin (MTZ) alt tur eleme kısıtı. Rotaların tek bir kapalı döngü olmasını ve alt turların oluşmamasını sağlar.
+    \item \textbf{(\ref{cons:depotout})-(\ref{cons:depotin})}: Her aktif kat rotası sanal kat deposundan bir kez çıkar ve aynı depoya bir kez döner.
+    \item \textbf{(\ref{cons:mtzbound})-(\ref{cons:mtz})}: Miller-Tucker-Zemlin (MTZ) alt tur eleme kısıtı her kat için bağımsız uygulanır.
 \end{itemize}
+
+\section{Uygulama Notu}
+
+Kod tarafında her aktif kat için ayrı bir depo-bağlantılı rota kurulmaktadır. Bu sayede kat içi yürüyüş mesafesi, THM açma maliyeti ve aktif kat maliyeti ayrı ayrı ölçülebilir. $x_{ij}$ ikili değişkeni ayrıca tutulmaz; semi-integer $y_{ij}$ değişkeni $0$ veya pozitif tam sayı değer alarak aynı seçimi daha az değişkenle temsil eder.
 
 \end{document}

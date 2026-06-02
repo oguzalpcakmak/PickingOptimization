@@ -1,48 +1,20 @@
-import express from 'express';
-import multer from 'multer';
-import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { spawn } from 'node:child_process';
-import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const appRoot = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(appRoot, '..');
-const distDir = path.join(appRoot, 'dist');
-const runRoot = path.join(appRoot, 'tmp', 'solver-runs');
-
-const PORT = Number(process.env.PORT || 5174);
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 80);
-const DEFAULT_SOLVER_PATH = path.join(repoRoot, 'cpp_solver', 'build', 'picking_current_best_cpp');
-const DEFAULT_LKH_PATH = path.join(repoRoot, 'external', 'LKH-3.0.14', 'LKH');
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_UPLOAD_MB * 1024 * 1024
-  }
-});
 
 const VALID_FLOORS = new Set(['MZN1', 'MZN2', 'MZN3', 'MZN4', 'MZN5', 'MZN6']);
 const ARTICLE_SELECTIONS = new Set(['grouped', 'bucket-cheapest', 'global-cheapest']);
 
-function sanitizeColumnName(name) {
+export function sanitizeColumnName(name) {
   return String(name ?? '').replace(/^\uFEFF/, '').trim();
 }
 
-function normalizeRawRow(row) {
+export function normalizeRawRow(row) {
   return Object.entries(row || {}).reduce((acc, [key, value]) => {
     acc[sanitizeColumnName(key)] = value;
     return acc;
   }, {});
 }
 
-function isRowEmpty(row) {
+export function isRowEmpty(row) {
   return Object.values(row || {}).every((value) => String(value ?? '').trim() === '');
 }
 
@@ -102,7 +74,7 @@ function rowsToCsv(headers, rows) {
   return `${lines.join('\n')}\n`;
 }
 
-function parseCsvRows(text) {
+export function parseCsvRows(text) {
   const parsed = Papa.parse(text, {
     header: true,
     skipEmptyLines: true,
@@ -117,7 +89,7 @@ function parseCsvRows(text) {
   return parsed.data.map(normalizeRawRow).filter((row) => !isRowEmpty(row));
 }
 
-function findSheetName(workbook, candidates) {
+export function findSheetName(workbook, candidates) {
   const sheetLookup = new Map(
     workbook.SheetNames.map((name) => [sanitizeColumnName(name).toLowerCase(), name])
   );
@@ -128,16 +100,6 @@ function findSheetName(workbook, candidates) {
   }
 
   return null;
-}
-
-function sheetToRows(workbook, sheetName) {
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return [];
-
-  return XLSX.utils
-    .sheet_to_json(sheet, { defval: '', raw: false })
-    .map(normalizeRawRow)
-    .filter((row) => !isRowEmpty(row));
 }
 
 function pickLocationFromRow(row) {
@@ -208,7 +170,7 @@ function hasCompleteLocation(location) {
   );
 }
 
-function buildSolverInputs(pickRowsRaw, stockRowsRaw) {
+export function buildSolverInputs(pickRowsRaw, stockRowsRaw) {
   const pickRows = pickRowsRaw.map(normalizeRawRow).filter((row) => !isRowEmpty(row));
   const stockRows = stockRowsRaw.map(normalizeRawRow).filter((row) => !isRowEmpty(row));
 
@@ -312,8 +274,6 @@ function buildSolverInputs(pickRowsRaw, stockRowsRaw) {
     stock
   );
 
-  const totalDemand = orders.reduce((sum, row) => sum + row.AMOUNT, 0);
-
   return {
     orderCsv,
     stockCsv,
@@ -321,7 +281,7 @@ function buildSolverInputs(pickRowsRaw, stockRowsRaw) {
       pickRows: pickRows.length,
       stockRows: stockRows.length,
       orderArticles: orders.length,
-      totalDemand,
+      totalDemand: orders.reduce((sum, row) => sum + row.AMOUNT, 0),
       solverStockRows: stock.length,
       addedBack,
       skippedPickRows,
@@ -336,7 +296,7 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-function resolveSolverOptions(body) {
+export function resolveSolverOptions(body = {}) {
   const profile = body.profile === 'fast' ? 'fast' : 'quality';
   const requestedSelection = toText(body.articleSelection);
   const articleSelection = ARTICLE_SELECTIONS.has(requestedSelection)
@@ -352,213 +312,3 @@ function resolveSolverOptions(body) {
     timeLimit: clampNumber(body.timeLimit, 1, 600, 120)
   };
 }
-
-function runProcess(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    const maxBuffer = 250_000;
-
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-      setTimeout(() => child.kill('SIGKILL'), 5000).unref();
-    }, options.timeoutMs);
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-      if (stdout.length > maxBuffer) stdout = stdout.slice(-maxBuffer);
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-      if (stderr.length > maxBuffer) stderr = stderr.slice(-maxBuffer);
-    });
-
-    child.on('error', (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-
-    child.on('close', (code) => {
-      clearTimeout(timeout);
-      if (timedOut) {
-        reject(new Error(`Solver sure asimina ugradi. Son log: ${stderr || stdout}`));
-        return;
-      }
-      if (code !== 0) {
-        reject(new Error(`Solver ${code} koduyla bitti. ${stderr || stdout}`));
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
-  });
-}
-
-async function runSolver(runDir, options) {
-  const solverPath = process.env.CPP_SOLVER_PATH || DEFAULT_SOLVER_PATH;
-  const lkhPath = process.env.LKH_PATH || DEFAULT_LKH_PATH;
-  if (!existsSync(solverPath)) {
-    throw new Error(`C++ solver binary bulunamadi: ${solverPath}`);
-  }
-
-  const ordersPath = path.join(runDir, 'orders.csv');
-  const stockPath = path.join(runDir, 'stock.csv');
-  const pickPath = path.join(runDir, 'pick_output.csv');
-  const altPath = path.join(runDir, 'alternative_locations.csv');
-  const summaryPath = path.join(runDir, 'summary.json');
-
-  const args = [
-    '--orders',
-    ordersPath,
-    '--stock',
-    stockPath,
-    '--time-limit',
-    String(options.timeLimit),
-    '--fallback-method',
-    'grasp',
-    '--article-selection',
-    options.articleSelection,
-    '--candidate-group-width',
-    String(options.candidateGroupWidth),
-    '--cleanup-operator',
-    '2-opt',
-    '--cleanup-strategy',
-    'best',
-    '--cleanup-passes',
-    '3',
-    '--output',
-    pickPath,
-    '--alternative-locations-output',
-    altPath,
-    '--summary-output',
-    summaryPath
-  ];
-
-  if (existsSync(lkhPath)) {
-    args.push('--seed-route-optimizer', 'lkh', '--lkh-path', lkhPath);
-  } else {
-    args.push('--seed-route-optimizer', 'cpp');
-  }
-
-  const timeoutMs = Math.round(options.timeLimit * 1000 + 180_000);
-  await runProcess(solverPath, args, {
-    cwd: repoRoot,
-    env: process.env,
-    timeoutMs
-  });
-
-  return {
-    pickPath,
-    altPath,
-    summaryPath,
-    solverPath,
-    lkhPath: existsSync(lkhPath) ? lkhPath : null
-  };
-}
-
-async function readJson(pathname) {
-  return JSON.parse(await fs.readFile(pathname, 'utf8'));
-}
-
-const app = express();
-
-app.get('/api/solver/status', (_req, res) => {
-  const solverPath = process.env.CPP_SOLVER_PATH || DEFAULT_SOLVER_PATH;
-  const lkhPath = process.env.LKH_PATH || DEFAULT_LKH_PATH;
-  res.json({
-    ok: true,
-    solverPath,
-    solverAvailable: existsSync(solverPath),
-    lkhPath,
-    lkhAvailable: existsSync(lkhPath)
-  });
-});
-
-app.post('/api/solve', upload.single('file'), async (req, res) => {
-  const runId = `${Date.now()}-${crypto.randomUUID()}`;
-  const runDir = path.join(runRoot, runId);
-  const requestStarted = Date.now();
-
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: 'Excel dosyasi yuklenmedi.' });
-      return;
-    }
-
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const pickSheetName = findSheetName(workbook, ['Grup Toplama Verisi']) || workbook.SheetNames[0];
-    const stockSheetName = findSheetName(workbook, ['Stok Bilgisi']);
-
-    if (!pickSheetName) {
-      res.status(400).json({ error: 'Workbook icinde pick sheet bulunamadi.' });
-      return;
-    }
-    if (!stockSheetName) {
-      res.status(400).json({
-        error: `"Stok Bilgisi" sheet'i bulunamadi. Mevcut sheetler: ${workbook.SheetNames.join(', ')}`
-      });
-      return;
-    }
-
-    const pickRows = sheetToRows(workbook, pickSheetName);
-    const stockRows = sheetToRows(workbook, stockSheetName);
-    const { orderCsv, stockCsv, stats: inputStats } = buildSolverInputs(pickRows, stockRows);
-    const options = resolveSolverOptions(req.body || {});
-
-    await fs.mkdir(runDir, { recursive: true });
-    await fs.writeFile(path.join(runDir, 'orders.csv'), orderCsv, 'utf8');
-    await fs.writeFile(path.join(runDir, 'stock.csv'), stockCsv, 'utf8');
-
-    const solverFiles = await runSolver(runDir, options);
-    const [pickCsv, altCsv, summary] = await Promise.all([
-      fs.readFile(solverFiles.pickPath, 'utf8'),
-      fs.readFile(solverFiles.altPath, 'utf8'),
-      readJson(solverFiles.summaryPath)
-    ]);
-
-    res.json({
-      ok: true,
-      options,
-      inputStats,
-      summary,
-      pickRows: parseCsvRows(pickCsv),
-      alternativeRows: parseCsvRows(altCsv),
-      runtime: {
-        mode: 'server-native',
-        solverPath: solverFiles.solverPath,
-        lkhPath: solverFiles.lkhPath,
-        elapsedMs: Date.now() - requestStarted
-      }
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Solver calistirilirken hata olustu.' });
-  } finally {
-    if (process.env.KEEP_SOLVER_RUNS !== '1') {
-      await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-});
-
-if (existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get(/.*/, (req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      next();
-      return;
-    }
-    res.sendFile(path.join(distDir, 'index.html'));
-  });
-}
-
-app.listen(PORT, () => {
-  console.log(`Simulation API listening on http://localhost:${PORT}`);
-});

@@ -41,6 +41,7 @@ import {
 import { processExcel, inspectPickData, PICK_DATA_FORMATS } from './utils/excelProcessor';
 import { processAlternativeLocations } from './utils/alternativeLocationProcessor';
 import { processStockData, mergeStockWithPicks } from './utils/stockProcessor';
+import { solveWorkbookWithServer, solveWorkbookWithWasm } from './utils/clientSolver';
 import { 
   ELEVATOR_1_AISLE, 
   ELEVATOR_2_AISLE, 
@@ -57,13 +58,33 @@ const { Header, Content, Footer } = Layout;
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
-const SOLVER_PROFILES = {
-  fast: {
-    articleSelection: 'grouped',
+const CLIENT_LKH_ENABLED = import.meta.env.VITE_ENABLE_CLIENT_LKH !== 'false';
+
+const SOLVER_MODES = {
+  'client-lkh': {
+    execution: 'client',
+    clientMode: 'lkh',
+    profile: 'quality',
+    articleSelection: 'bucket-cheapest',
     candidateGroupWidth: 2
   },
-  quality: {
+  'client-cpp': {
+    execution: 'client',
+    clientMode: 'cpp',
+    profile: 'quality',
     articleSelection: 'bucket-cheapest',
+    candidateGroupWidth: 2
+  },
+  'server-quality': {
+    execution: 'server',
+    profile: 'quality',
+    articleSelection: 'bucket-cheapest',
+    candidateGroupWidth: 2
+  },
+  'server-fast': {
+    execution: 'server',
+    profile: 'fast',
+    articleSelection: 'grouped',
     candidateGroupWidth: 2
   }
 };
@@ -88,10 +109,11 @@ function App() {
   const [alternativeLocations, setAlternativeLocations] = useState([]);
   const [alternativeStats, setAlternativeStats] = useState(null);
   const [solverRunning, setSolverRunning] = useState(false);
-  const [solverProfile, setSolverProfile] = useState('quality');
+  const [solverMode, setSolverMode] = useState('client-cpp');
   const [solverTimeLimit, setSolverTimeLimit] = useState(120);
   const [solverSummary, setSolverSummary] = useState(null);
   const [solverInputStats, setSolverInputStats] = useState(null);
+  const [solverRuntime, setSolverRuntime] = useState(null);
   const [showDetailedView, setShowDetailedView] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -110,6 +132,7 @@ function App() {
     setInputFormat(null);
     setSolverSummary(null);
     setSolverInputStats(null);
+    setSolverRuntime(null);
     
     // PICKED_AMOUNT'a göre satırları çoğalt
     const expandedData = [];
@@ -374,6 +397,7 @@ function App() {
     setInputFormat(null);
     setSolverSummary(null);
     setSolverInputStats(null);
+    setSolverRuntime(null);
     setProgress({ stage: '', progress: 0 });
     setProcessing(true);
 
@@ -462,24 +486,31 @@ function App() {
     return false; // Prevent default upload behavior
   }, [messageApi, lang]);
 
+  const loadWasmFixture = useCallback(async (filename) => {
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}test-fixtures/${filename}`);
+      if (!response.ok) throw new Error(response.statusText);
+      const workbook = new File([await response.blob()], filename, {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      handleFileUpload(workbook);
+    } catch (error) {
+      messageApi.error(`${t(lang, 'excelReadError')}: ${error.message}`);
+    }
+  }, [handleFileUpload, lang, messageApi]);
+
   const runCppSolver = useCallback(() => {
     if (!file || isTestData) {
       messageApi.warning(t(lang, 'solverNeedsFile'));
       return;
     }
 
-    const profile = SOLVER_PROFILES[solverProfile] || SOLVER_PROFILES.quality;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('profile', solverProfile);
-    formData.append('articleSelection', profile.articleSelection);
-    formData.append('candidateGroupWidth', String(profile.candidateGroupWidth));
-    formData.append('timeLimit', String(solverTimeLimit || 120));
-
+    const mode = SOLVER_MODES[solverMode] || SOLVER_MODES['client-cpp'];
     setSolverRunning(true);
     setProcessing(true);
     setSolverSummary(null);
     setSolverInputStats(null);
+    setSolverRuntime(null);
     setAlternativeFile(null);
     setAlternativeLocations([]);
     setAlternativeStats(null);
@@ -487,15 +518,19 @@ function App() {
 
     (async () => {
       try {
-        const response = await fetch('/api/solve', {
-          method: 'POST',
-          body: formData
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.error || response.statusText);
-        }
+        const options = {
+          profile: mode.profile,
+          articleSelection: mode.articleSelection,
+          candidateGroupWidth: mode.candidateGroupWidth,
+          timeLimit: solverTimeLimit || 120,
+          clientMode: mode.clientMode
+        };
+        const payload =
+          mode.execution === 'client'
+            ? await solveWorkbookWithWasm(file, options, ({ progress: workerProgress, detail }) => {
+                setProgress({ stage: detail === 'loading-lkh' ? 'loading-lkh' : 'solver', progress: workerProgress });
+              })
+            : await solveWorkbookWithServer(file, options);
 
         setProgress({ stage: 'transform', progress: 0 });
         const { data: processedResult, stats: processStats } = processExcel(payload.pickRows || [], (p) => {
@@ -510,6 +545,7 @@ function App() {
         setStockStats(null);
         setSolverSummary(payload.summary || null);
         setSolverInputStats(payload.inputStats || null);
+        setSolverRuntime(payload.runtime || null);
 
         if (payload.alternativeRows?.length) {
           const { data, stats } = processAlternativeLocations(payload.alternativeRows);
@@ -528,7 +564,7 @@ function App() {
         setProcessing(false);
       }
     })();
-  }, [file, isTestData, lang, messageApi, solverProfile, solverTimeLimit]);
+  }, [file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
 
   const downloadExcel = useCallback(() => {
     if (!processedData) return;
@@ -574,6 +610,7 @@ function App() {
     setAlternativeStats(null);
     setSolverSummary(null);
     setSolverInputStats(null);
+    setSolverRuntime(null);
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
 
@@ -589,6 +626,7 @@ function App() {
       group: t(lang, 'stageGroup'),
       order: t(lang, 'stageOrder'),
       solver: t(lang, 'stageSolver'),
+      'loading-lkh': t(lang, 'stageLoadingLkh'),
       complete: t(lang, 'stageComplete')
     };
     return labels[stage] || stage;
@@ -704,6 +742,13 @@ function App() {
                           style={{ background: '#b7791f', borderColor: '#b7791f' }}
                         >
                           {t(lang, 'loadTestData')}
+                        </Button>
+                        <Button
+                          icon={<FileTextOutlined />}
+                          size="large"
+                          onClick={() => loadWasmFixture('solver-small.xlsx')}
+                        >
+                          {t(lang, 'loadWasmSample')}
                         </Button>
                         <Upload
                           accept=".csv,.xlsx,.xls"
@@ -855,7 +900,23 @@ function App() {
           )}
 
           {solverSummary && (
-            <Card style={{ marginBottom: 24 }} title={t(lang, 'solverResultTitle')}>
+            <Card
+              style={{ marginBottom: 24 }}
+              title={
+                <Flex align="center" gap={8}>
+                  <span>{t(lang, 'solverResultTitle')}</span>
+                  {solverRuntime?.mode === 'wasm-worker' && solverRuntime?.seedRouteOptimizer === 'lkh' && (
+                    <Tag color="green">{t(lang, 'solverRuntimeWorkerLkh')}</Tag>
+                  )}
+                  {solverRuntime?.mode === 'wasm-worker' && solverRuntime?.seedRouteOptimizer !== 'lkh' && (
+                    <Tag color="cyan">{t(lang, 'solverRuntimeWorkerCpp')}</Tag>
+                  )}
+                  {solverRuntime?.mode === 'server-native' && (
+                    <Tag color="blue">{t(lang, 'solverRuntimeServer')}</Tag>
+                  )}
+                </Flex>
+              }
+            >
               <Row gutter={[16, 16]}>
                 <Col xs={12} sm={6}>
                   <Statistic
@@ -905,13 +966,19 @@ function App() {
               {file && !isTestData && (
                 <>
                   <Select
-                    value={solverProfile}
-                    onChange={setSolverProfile}
+                    value={solverMode}
+                    onChange={setSolverMode}
                     disabled={solverRunning || processing}
-                    style={{ width: 150 }}
+                    style={{ width: 230 }}
                     options={[
-                      { value: 'quality', label: t(lang, 'solverProfileQuality') },
-                      { value: 'fast', label: t(lang, 'solverProfileFast') }
+                      {
+                        value: 'client-lkh',
+                        label: t(lang, 'solverModeClientLkh'),
+                        disabled: !CLIENT_LKH_ENABLED
+                      },
+                      { value: 'client-cpp', label: t(lang, 'solverModeClientCpp') },
+                      { value: 'server-quality', label: t(lang, 'solverModeServerQuality') },
+                      { value: 'server-fast', label: t(lang, 'solverModeServerFast') }
                     ]}
                   />
                   <InputNumber
@@ -931,7 +998,7 @@ function App() {
                     loading={solverRunning}
                     onClick={runCppSolver}
                   >
-                    {t(lang, 'runCppSolver')}
+                    {t(lang, 'solve')}
                   </Button>
                 </>
               )}

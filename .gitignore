@@ -12,6 +12,7 @@ config/api-key.txt
 # Distribution / packaging
 .Python
 build/
+build-wasm/
 develop-eggs/
 dist/
 downloads/
@@ -187,6 +188,11 @@ gurobi.lic
 api-key.txt
 node_modules/
 Simulation/tmp/
+Simulation/public/wasm/picking_solver.mjs
+Simulation/public/wasm/picking_solver.wasm
+Simulation/public/wasm/lkh.mjs
+Simulation/public/wasm/lkh.wasm
+Simulation/public/test-fixtures/solver-full.xlsx
 .openclaude-profile.json
 10min.txt
 APPROACHES_1.md

@@ -1,0 +1,48 @@
+{
+  "active_floors": [
+    "MZN2"
+  ],
+  "active_thms": [
+    "167045407",
+    "167047149",
+    "167047355",
+    "167050918",
+    "167062851",
+    "167067916",
+    "167070336",
+    "567131863",
+    "567327365",
+    "567457737"
+  ],
+  "articles": 10,
+  "best_bound": 423.5,
+  "constraints": 2068,
+  "distance": 243.5,
+  "floors": 1,
+  "has_solution": true,
+  "is_optimal": true,
+  "mip_gap": 0.0,
+  "objective_breakdown": {
+    "cross_floor_penalty": 0.0,
+    "distance": 243.5,
+    "floor": 30.0,
+    "thm": 150.0
+  },
+  "objective_value": 423.5,
+  "physical_nodes": 65,
+  "pick_rows": 10,
+  "routing_arcs": 1582,
+  "runtime": 0.4342951774597168,
+  "status": "OPTIMAL",
+  "status_code": 2,
+  "stock_locations": 69,
+  "thms": 10,
+  "variables": 1853,
+  "visited_nodes": 9,
+  "weights": {
+    "cross_floor_penalty_per_extra_floor": 0.0,
+    "distance": 1.0,
+    "floor": 30.0,
+    "thm": 15.0
+  }
+}
