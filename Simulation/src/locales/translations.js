@@ -67,6 +67,9 @@ export const translations = {
     solverProfileQuality: 'Kaliteli',
     solverTimeLimit: 'Limit',
     exportPng: 'PNG İndir',
+    resultViewTitle: 'Sonuç Görünümü',
+    actualResults: 'Gerçekleşen sonuç',
+    solutionResults: 'Çözüm sonuçları',
     
     // Table columns
     colPicker: 'PICKER',
@@ -236,6 +239,9 @@ export const translations = {
     solverProfileQuality: 'Quality',
     solverTimeLimit: 'Limit',
     exportPng: 'Export PNG',
+    resultViewTitle: 'Result View',
+    actualResults: 'Actual result',
+    solutionResults: 'Solver result',
     
     // Table columns
     colPicker: 'PICKER',

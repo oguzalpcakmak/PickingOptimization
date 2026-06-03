@@ -109,12 +109,15 @@ function App() {
   const [alternativeLocations, setAlternativeLocations] = useState([]);
   const [alternativeStats, setAlternativeStats] = useState(null);
   const [solverRunning, setSolverRunning] = useState(false);
-  const [solverMode, setSolverMode] = useState('client-cpp');
+  const [solverMode, setSolverMode] = useState('server-quality');
   const [solverTimeLimit, setSolverTimeLimit] = useState(120);
   const [solverSummary, setSolverSummary] = useState(null);
   const [solverInputStats, setSolverInputStats] = useState(null);
   const [solverRuntime, setSolverRuntime] = useState(null);
   const [showDetailedView, setShowDetailedView] = useState(false);
+  const [actualResultSnapshot, setActualResultSnapshot] = useState(null);
+  const [solverResultSnapshot, setSolverResultSnapshot] = useState(null);
+  const [resultViewMode, setResultViewMode] = useState('actual');
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -126,6 +129,32 @@ function App() {
     },
   };
 
+  const applyResultSnapshot = useCallback((viewMode, snapshot, shouldShowVisualizer = true) => {
+    if (!snapshot) return;
+
+    setResultViewMode(viewMode);
+    setRawData(snapshot.rawData || null);
+    setProcessedData(snapshot.processedData || null);
+    setStats(snapshot.stats || null);
+    setInputFormat(snapshot.inputFormat || null);
+    setUpdatedStockData(snapshot.updatedStockData || null);
+    setStockStats(snapshot.stockStats || null);
+    setAlternativeFile(snapshot.alternativeFile || null);
+    setAlternativeLocations(snapshot.alternativeLocations || []);
+    setAlternativeStats(snapshot.alternativeStats || null);
+    setSelectedGroupData([]);
+    setCurrentSimStep(0);
+    if (shouldShowVisualizer) {
+      setShowVisualizer(true);
+    }
+  }, []);
+
+  const handleResultViewChange = useCallback((checked) => {
+    const nextMode = checked ? 'solution' : 'actual';
+    const nextSnapshot = checked ? solverResultSnapshot : actualResultSnapshot;
+    applyResultSnapshot(nextMode, nextSnapshot);
+  }, [actualResultSnapshot, applyResultSnapshot, solverResultSnapshot]);
+
   const loadTestData = useCallback(() => {
     setFile({ name: t(lang, 'testDataName') });
     setRawData(null);
@@ -133,6 +162,11 @@ function App() {
     setSolverSummary(null);
     setSolverInputStats(null);
     setSolverRuntime(null);
+    setSolverResultSnapshot(null);
+    setResultViewMode('actual');
+    setAlternativeFile(null);
+    setAlternativeLocations([]);
+    setAlternativeStats(null);
     
     // PICKED_AMOUNT'a göre satırları çoğalt
     const expandedData = [];
@@ -318,11 +352,24 @@ function App() {
     const groupCount = groups.size;
     const totalDist = finalData.reduce((sum, r) => sum + parseFloat(r.STEP_DIST || 0), 0);
     
-    setStats({
+    const testStats = {
       totalRows: expandedData.length,
       mznRows,
       totalGroups: groupCount,
       totalDistance: totalDist.toFixed(2)
+    };
+
+    setStats(testStats);
+    setActualResultSnapshot({
+      rawData: null,
+      processedData: finalData,
+      stats: testStats,
+      inputFormat: null,
+      updatedStockData: null,
+      stockStats: null,
+      alternativeFile: null,
+      alternativeLocations: [],
+      alternativeStats: null
     });
     
     messageApi.success(t(lang, 'testDataLoaded'));
@@ -367,6 +414,16 @@ function App() {
         setAlternativeFile(uploadedFile);
         setAlternativeLocations(data);
         setAlternativeStats(stats);
+        const alternativePatch = {
+          alternativeFile: uploadedFile,
+          alternativeLocations: data,
+          alternativeStats: stats
+        };
+        if (resultViewMode === 'solution') {
+          setSolverResultSnapshot((snapshot) => snapshot ? { ...snapshot, ...alternativePatch } : snapshot);
+        } else {
+          setActualResultSnapshot((snapshot) => snapshot ? { ...snapshot, ...alternativePatch } : snapshot);
+        }
         setShowVisualizer(true);
 
         messageApi.success(
@@ -379,7 +436,7 @@ function App() {
     })();
 
     return false;
-  }, [lang, messageApi]);
+  }, [lang, messageApi, resultViewMode]);
 
   const handleFileUpload = useCallback((uploadedFile) => {
     if (!uploadedFile) return false;
@@ -398,6 +455,12 @@ function App() {
     setSolverSummary(null);
     setSolverInputStats(null);
     setSolverRuntime(null);
+    setActualResultSnapshot(null);
+    setSolverResultSnapshot(null);
+    setResultViewMode('actual');
+    setAlternativeFile(null);
+    setAlternativeLocations([]);
+    setAlternativeStats(null);
     setProgress({ stage: '', progress: 0 });
     setProcessing(true);
 
@@ -463,14 +526,31 @@ function App() {
         setProcessedData(processedResult);
         setStats(processStats);
         setRawData(inspection.rows);
+
+        let nextUpdatedStockData = null;
+        let nextStockStats = null;
         
         if (stockJsonData) {
           const processedStock = processStockData(stockJsonData);
           const { data: mergedStock, stats: mergeStats } = mergeStockWithPicks(processedStock, processedResult);
+          nextUpdatedStockData = mergedStock;
+          nextStockStats = mergeStats;
           setUpdatedStockData(mergedStock);
           setStockStats(mergeStats);
           messageApi.success(t(lang, 'stockProcessed'));
         }
+
+        setActualResultSnapshot({
+          rawData: inspection.rows,
+          processedData: processedResult,
+          stats: processStats,
+          inputFormat: inspection.format,
+          updatedStockData: nextUpdatedStockData,
+          stockStats: nextStockStats,
+          alternativeFile: null,
+          alternativeLocations: [],
+          alternativeStats: null
+        });
         
         messageApi.success(t(lang, 'conversionComplete'));
         setShowVisualizer(true);
@@ -505,15 +585,20 @@ function App() {
       return;
     }
 
-    const mode = SOLVER_MODES[solverMode] || SOLVER_MODES['client-cpp'];
+    const mode = SOLVER_MODES[solverMode] || SOLVER_MODES['server-quality'];
     setSolverRunning(true);
     setProcessing(true);
     setSolverSummary(null);
     setSolverInputStats(null);
     setSolverRuntime(null);
-    setAlternativeFile(null);
-    setAlternativeLocations([]);
-    setAlternativeStats(null);
+    setSolverResultSnapshot(null);
+    if (actualResultSnapshot) {
+      applyResultSnapshot('actual', actualResultSnapshot, false);
+    } else {
+      setAlternativeFile(null);
+      setAlternativeLocations([]);
+      setAlternativeStats(null);
+    }
     setProgress({ stage: 'solver', progress: 20 });
 
     (async () => {
@@ -537,25 +622,37 @@ function App() {
           setProgress(p);
         });
 
-        setProcessedData(processedResult);
-        setStats(processStats);
-        setRawData(payload.pickRows || []);
-        setInputFormat(PICK_DATA_FORMATS.SOLVER_OUTPUT);
-        setUpdatedStockData(null);
-        setStockStats(null);
         setSolverSummary(payload.summary || null);
         setSolverInputStats(payload.inputStats || null);
         setSolverRuntime(payload.runtime || null);
 
+        let solverAlternativeFile = null;
+        let solverAlternativeLocations = [];
+        let solverAlternativeStats = null;
+
         if (payload.alternativeRows?.length) {
           const { data, stats } = processAlternativeLocations(payload.alternativeRows);
-          setAlternativeFile({ name: t(lang, 'solverAlternativeFileName') });
-          setAlternativeLocations(data);
-          setAlternativeStats(stats);
+          solverAlternativeFile = { name: t(lang, 'solverAlternativeFileName') };
+          solverAlternativeLocations = data;
+          solverAlternativeStats = stats;
         }
 
+        const solverSnapshot = {
+          rawData: payload.pickRows || [],
+          processedData: processedResult,
+          stats: processStats,
+          inputFormat: PICK_DATA_FORMATS.SOLVER_OUTPUT,
+          updatedStockData: null,
+          stockStats: null,
+          alternativeFile: solverAlternativeFile,
+          alternativeLocations: solverAlternativeLocations,
+          alternativeStats: solverAlternativeStats
+        };
+
+        setSolverResultSnapshot(solverSnapshot);
+        applyResultSnapshot('solution', solverSnapshot);
+
         messageApi.success(t(lang, 'solverComplete'));
-        setShowVisualizer(true);
       } catch (error) {
         messageApi.error(`${t(lang, 'solverError')}: ${error.message}`);
         console.error(error);
@@ -564,7 +661,7 @@ function App() {
         setProcessing(false);
       }
     })();
-  }, [file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
+  }, [actualResultSnapshot, applyResultSnapshot, file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
 
   const downloadExcel = useCallback(() => {
     if (!processedData) return;
@@ -611,6 +708,9 @@ function App() {
     setSolverSummary(null);
     setSolverInputStats(null);
     setSolverRuntime(null);
+    setActualResultSnapshot(null);
+    setSolverResultSnapshot(null);
+    setResultViewMode('actual');
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
 
@@ -957,6 +1057,27 @@ function App() {
                   {solverInputStats.orderArticles} {t(lang, 'articles')} | {solverInputStats.totalDemand} {t(lang, 'units')} | {solverInputStats.solverStockRows} {t(lang, 'stockRows')}
                 </Text>
               )}
+            </Card>
+          )}
+
+          {actualResultSnapshot && solverResultSnapshot && (
+            <Card style={{ marginBottom: 24 }}>
+              <Flex align="center" justify="space-between" gap={12} wrap="wrap">
+                <Text strong>{t(lang, 'resultViewTitle')}</Text>
+                <Flex align="center" gap={8}>
+                  <Text type={resultViewMode === 'actual' ? undefined : 'secondary'}>
+                    {t(lang, 'actualResults')}
+                  </Text>
+                  <Switch
+                    checked={resultViewMode === 'solution'}
+                    onChange={handleResultViewChange}
+                    disabled={solverRunning || processing}
+                  />
+                  <Text type={resultViewMode === 'solution' ? undefined : 'secondary'}>
+                    {t(lang, 'solutionResults')}
+                  </Text>
+                </Flex>
+              </Flex>
             </Card>
           )}
 
