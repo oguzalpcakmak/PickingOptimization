@@ -81,7 +81,12 @@ def parse_args(default_profile: str = "10item") -> argparse.Namespace:
         choices=sorted(BENCHMARK_PROFILES),
         default=default_profile,
     )
-    parser.add_argument("--time-limit", type=float, default=120.0)
+    parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=120.0,
+        help="Solver time limit in seconds. Use 0 for unlimited.",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -118,22 +123,29 @@ def run_command(
     env: dict[str, str] | None = None,
 ) -> float:
     started_at = time.perf_counter()
-    completed = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    runtime = time.perf_counter() - started_at
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(
-        "$ " + " ".join(command) + "\n\n" + completed.stdout + completed.stderr,
-        encoding="utf-8",
-    )
-    if completed.returncode != 0:
+    with log_path.open("w", encoding="utf-8") as log:
+        log.write("$ " + " ".join(command) + "\n\n")
+        log.flush()
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            log.write(line)
+            log.flush()
+        return_code = process.wait()
+    runtime = time.perf_counter() - started_at
+    if return_code != 0:
         raise RuntimeError(
-            f"Command failed with exit code {completed.returncode}: {' '.join(command)}. "
+            f"Command failed with exit code {return_code}: {' '.join(command)}. "
             f"See {log_path}."
         )
     return runtime
@@ -209,6 +221,11 @@ def write_report(
     delta = run_summary["delta_vs_gurobi"]
     gap = gurobi.get("mip_gap")
     gap_text = "n/a" if gap is None else f"{100.0 * float(gap):.4f}%"
+    time_limit_text = (
+        "unlimited"
+        if run_summary["time_limit_seconds"] <= 0
+        else f'{run_summary["time_limit_seconds"]:.0f}s time limit'
+    )
     title = run_summary.get("title", f"{len(run_summary['articles'])}-Item Benchmark")
     baseline_name = "Gurobi optimum" if gurobi["is_optimal"] else "Gurobi incumbent"
     if gurobi["is_optimal"]:
@@ -243,7 +260,7 @@ Generated: `{run_summary["generated_at"]}`
 - Floors: `{", ".join(run_summary["floors"])}`
 - Objective: `distance + 15 * THMs + 30 * active floors`
 - C++ mode: `bucket-cheapest`, width `2`, LKH seed route, `2-opt best`, `3` cleanup passes
-- Gurobi mode: MIP model with `--mip-gap 0` and `{run_summary["time_limit_seconds"]:.0f}s` time limit
+- Gurobi mode: MIP model with `--mip-gap 0` and `{time_limit_text}`
 
 ## Results
 
@@ -312,9 +329,10 @@ def main(default_profile: str = "10item") -> int:
 
     gurobi_env = with_gurobi_pythonpath()
     gurobi_env["GRB_LICENSE_FILE"] = str(REPO_ROOT / "gurobi.lic")
-    gurobi_wall_time = run_command(
-        [
+    gurobi_env["PYTHONUNBUFFERED"] = "1"
+    gurobi_command = [
             sys.executable,
+            "-u",
             "src/gurobi_pick_model.py",
             "--orders",
             str(orders),
@@ -330,8 +348,6 @@ def main(default_profile: str = "10item") -> int:
             str(WEIGHTS["thm"]),
             "--floor-weight",
             str(WEIGHTS["floor"]),
-            "--time-limit",
-            str(args.time_limit),
             "--mip-gap",
             "0",
             "--optimize",
@@ -341,7 +357,12 @@ def main(default_profile: str = "10item") -> int:
             str(gurobi_alt_path),
             "--summary-output",
             str(gurobi_summary_path),
-        ],
+        ]
+    if args.time_limit > 0:
+        gurobi_command[17:17] = ["--time-limit", str(args.time_limit)]
+
+    gurobi_wall_time = run_command(
+        gurobi_command,
         gurobi_dir / "run.log",
         env=gurobi_env,
     )

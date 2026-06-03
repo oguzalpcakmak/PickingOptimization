@@ -1,6 +1,6 @@
 # Gurobi vs C++ Heuristic: 25-Item / 3-Floor Benchmark
 
-Generated: `2026-06-02T17:39:07+03:00`
+Generated: `2026-06-02T21:02:29+03:00`
 
 ## Setup
 
@@ -11,27 +11,27 @@ Generated: `2026-06-02T17:39:07+03:00`
 - Floors: `MZN1, MZN2, MZN3`
 - Objective: `distance + 15 * THMs + 30 * active floors`
 - C++ mode: `bucket-cheapest`, width `2`, LKH seed route, `2-opt best`, `3` cleanup passes
-- Gurobi mode: MIP model with `--mip-gap 0` and `600s` time limit
+- Gurobi mode: MIP model with `--mip-gap 0` and `unlimited`
 
 ## Results
 
-| Solver | Status | Objective | Delta vs Gurobi incumbent | Distance | Floors | THMs | Pick rows | Visited nodes | Runtime |
+| Solver | Status | Objective | Delta vs Gurobi optimum | Distance | Floors | THMs | Pick rows | Visited nodes | Runtime |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Corrected Gurobi MIP model | `TIME_LIMIT` | 860.34 | 0.00 | 470.34 | 1 | 24 | 25 | 23 | 600.0098s |
-| C++ current heuristic | `COMPLETED` | 888.42 | 28.08 (3.26%) | 498.42 | 1 | 24 | 25 | 22 | 0.0455s |
+| Corrected Gurobi MIP model | `OPTIMAL` | 856.10 | 0.00 | 466.10 | 1 | 24 | 25 | 23 | 2718.5912s |
+| C++ current heuristic | `COMPLETED` | 888.42 | 32.32 (3.78%) | 498.42 | 1 | 24 | 25 | 22 | 0.0451s |
 
 ## Gurobi Solve
 
-- Best bound: `828.66`
-- MIP gap: `3.6823%`
-- Proven optimal: `no`
+- Best bound: `856.10`
+- MIP gap: `0.0000%`
+- Proven optimal: `yes`
 - Variables: `9554`
 - Constraints: `10072`
 - Routing arcs: `8894`
 
 ## Interpretation
 
-- Gurobi reached the time limit without proving optimality. The C++ result is `3.26%` above the Gurobi incumbent. Given the `828.66` lower bound, the C++ solution's true optimality gap is between `3.26%` and `7.21%` under this model.
+- Gurobi proved optimality, so the C++ delta is an exact optimality gap for this benchmark.
 
 ## Validation
 
