@@ -1097,9 +1097,7 @@ function App() {
                         label: t(lang, 'solverModeClientLkh'),
                         disabled: !CLIENT_LKH_ENABLED
                       },
-                      { value: 'client-cpp', label: t(lang, 'solverModeClientCpp') },
-                      { value: 'server-quality', label: t(lang, 'solverModeServerQuality') },
-                      { value: 'server-fast', label: t(lang, 'solverModeServerFast') }
+                      { value: 'server-quality', label: t(lang, 'solverModeServerQuality') }
                     ]}
                   />
                   <InputNumber
