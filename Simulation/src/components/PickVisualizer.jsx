@@ -52,6 +52,14 @@ function sanitizeFilePart(value) {
   return String(value || 'route').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
+function getRouteGroupKey(row) {
+  return `${row.ACCOUNTNO || ''}|${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+}
+
+function getPickcarLabel(row) {
+  return row.ACCOUNTNO ? `${row.PICKCAR_THM} (${row.ACCOUNTNO})` : row.PICKCAR_THM;
+}
+
 function PickVisualizer({
   data,
   isDarkMode = true,
@@ -117,7 +125,7 @@ function PickVisualizer({
       // START, RETURN ve STAIR satırlarını hariç tut
       if (row.IS_START || row.IS_RETURN || row.IS_STAIR_START || row.IS_STAIR_RETURN) return;
       
-      const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+      const key = getRouteGroupKey(row);
       if (!groups[key]) {
         groups[key] = new Set();
       }
@@ -144,7 +152,7 @@ function PickVisualizer({
       // START, RETURN ve STAIR satırlarını TIME kontrolünden hariç tut
       if (row.IS_START || row.IS_RETURN || row.IS_STAIR_START || row.IS_STAIR_RETURN) return;
       
-      const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+      const key = getRouteGroupKey(row);
       if (!groups[key]) {
         groups[key] = { hasNoTime: false };
       }
@@ -207,7 +215,7 @@ function PickVisualizer({
     if (filterSingleFloor) {
       // Sadece tek katta kalan grupların picker'larını al
       filteredData = filteredData.filter(row => {
-        const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+        const key = getRouteGroupKey(row);
         return !multiFloorGroups.has(key);
       });
     }
@@ -215,7 +223,7 @@ function PickVisualizer({
     if (filterHasNoTime) {
       // TIME verisi tam olan grupların picker'larını al
       filteredData = filteredData.filter(row => {
-        const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+        const key = getRouteGroupKey(row);
         return !noTimeGroups.has(key);
       });
     }
@@ -236,27 +244,35 @@ function PickVisualizer({
     
     if (filterSingleFloor) {
       filteredData = filteredData.filter(row => {
-        const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+        const key = getRouteGroupKey(row);
         return !multiFloorGroups.has(key);
       });
     }
     
     if (filterHasNoTime) {
       filteredData = filteredData.filter(row => {
-        const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+        const key = getRouteGroupKey(row);
         return !noTimeGroups.has(key);
       });
     }
     
-    const codes = [...new Set(filteredData.map(row => row.PICKCAR_THM))];
-    return codes.sort();
+    const routeOptions = new Map();
+    for (const row of filteredData) {
+      const value = getRouteGroupKey(row);
+      if (!routeOptions.has(value)) {
+        routeOptions.set(value, getPickcarLabel(row));
+      }
+    }
+    return [...routeOptions.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [data, selectedPicker, filterSingleFloor, filterHasNoTime, multiFloorGroups, noTimeGroups]);
 
   // Seçili toplama işleminin verileri
   const pickData = useMemo(() => {
     if (!selectedPicker || !selectedPickcar) return [];
     return data
-      .filter(row => row.PICKER_CODE === selectedPicker && row.PICKCAR_THM === selectedPickcar)
+      .filter(row => row.PICKER_CODE === selectedPicker && getRouteGroupKey(row) === selectedPickcar)
       .sort((a, b) => (a.PICK_ORDER || 0) - (b.PICK_ORDER || 0));
   }, [data, selectedPicker, selectedPickcar]);
 
@@ -731,8 +747,8 @@ function PickVisualizer({
                 disabled={!selectedPicker}
               >
                 <option value="">{t(lang, 'selectPlaceholder')}</option>
-                {pickcarCodes.map(code => (
-                  <option key={code} value={code}>{code}</option>
+                {pickcarCodes.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </div>

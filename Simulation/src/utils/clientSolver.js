@@ -65,9 +65,75 @@ export async function solveWorkbookWithWasm(file, options, onProgress) {
   });
 }
 
+async function fileToWorkerPayload(file) {
+  if (!file) return null;
+  return {
+    fileName: file.name,
+    buffer: await file.arrayBuffer()
+  };
+}
+
+export async function solveAccountFilesWithWasm(files, options, onProgress) {
+  const requestId = nextRequestId++;
+  const [alokeFile, groupFile, stockFile] = await Promise.all([
+    fileToWorkerPayload(files.aloke),
+    fileToWorkerPayload(files.group),
+    fileToWorkerPayload(files.stock)
+  ]);
+  const solverWorker = ensureWorker();
+  const transferables = [alokeFile?.buffer, groupFile?.buffer, stockFile?.buffer].filter(Boolean);
+
+  return new Promise((resolve, reject) => {
+    pending.set(requestId, { resolve, reject, onProgress });
+    solverWorker.postMessage(
+      {
+        type: 'solve-account',
+        requestId,
+        payload: {
+          alokeFile,
+          groupFile,
+          stockFile,
+          options
+        }
+      },
+      transferables
+    );
+  });
+}
+
 export async function solveWorkbookWithServer(file, options) {
   const form = new FormData();
   form.append('file', file);
+  form.append('profile', options.profile);
+  form.append('articleSelection', options.articleSelection);
+  form.append('candidateGroupWidth', String(options.candidateGroupWidth));
+  form.append('timeLimit', String(options.timeLimit));
+
+  const response = await fetch('/api/solve', {
+    method: 'POST',
+    body: form
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Server solver ${response.status} koduyla hata verdi.`);
+  }
+
+  return {
+    ...payload,
+    runtime: {
+      ...payload.runtime,
+      mode: 'server-native',
+      seedRouteOptimizer: payload.runtime?.lkhPath ? 'lkh' : 'cpp',
+      lkhAvailable: Boolean(payload.runtime?.lkhPath)
+    }
+  };
+}
+
+export async function solveAccountFilesWithServer(files, options) {
+  const form = new FormData();
+  form.append('alokeFile', files.aloke);
+  if (files.group) form.append('groupFile', files.group);
+  form.append('stockFile', files.stock);
   form.append('profile', options.profile);
   form.append('articleSelection', options.articleSelection);
   form.append('candidateGroupWidth', String(options.candidateGroupWidth));

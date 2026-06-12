@@ -10,21 +10,27 @@
  */
 export function transformStockRow(row) {
   const toString = (val) => val !== undefined && val !== null ? String(val) : '';
+  const stripLeadingZeros = (val) => {
+    const text = toString(val).trim();
+    if (!/^\d+$/.test(text)) return text;
+    return String(parseInt(text, 10));
+  };
   const toNumber = (val) => {
     const num = parseInt(val, 10);
     return isNaN(num) ? 0 : num;
   };
 
   return {
+    ACCOUNTNO: toString(row['ACCOUNTNO']),
     PICKED_THM: toString(row['THM_ID']),
     ARTICLE_CODE: toString(row['ARTICLE_CODE']),
     AREA: toString(row['ACT_AREA']),
-    AISLE: toString(row['ACT_AISLE']),
-    COLUMN: toString(row['ACT_X']),
-    SHELF: toString(row['ACT_Y']),
+    AISLE: stripLeadingZeros(row['ACT_AISLE']),
+    COLUMN: stripLeadingZeros(row['ACT_X']),
+    SHELF: stripLeadingZeros(row['ACT_Y']),
     LEFT_OR_RIGHT: toString(row['ACT_Z']),
-    STOCK: toNumber(row['Stok']),
-    RESERVED: toNumber(row['Rezerve'])
+    STOCK: toNumber(row['Stok'] ?? row['STOCK'] ?? row['QTY_STOCK']),
+    RESERVED: toNumber(row['Rezerve'] ?? row['RESERVED'] ?? row['QTY_STOCK_IN_PLANNED'])
   };
 }
 
@@ -49,7 +55,7 @@ export function mergeStockWithPicks(stockData, pickData) {
   const stockMap = new Map();
   
   for (const stock of stockData) {
-    const key = `${stock.PICKED_THM}|${stock.ARTICLE_CODE}`;
+    const key = `${stock.ACCOUNTNO || ''}|${stock.PICKED_THM}|${stock.ARTICLE_CODE}`;
     stockMap.set(key, { ...stock });
   }
 
@@ -57,12 +63,13 @@ export function mergeStockWithPicks(stockData, pickData) {
   const pickQuantities = new Map();
   
   for (const pick of pickData) {
-    const key = `${pick.PICKED_THM}|${pick.ARTICLE_CODE}`;
+    const key = `${pick.ACCOUNTNO || ''}|${pick.PICKED_THM}|${pick.ARTICLE_CODE}`;
     const amount = parseInt(pick.PICKED_AMOUNT) || 1;
     
     if (!pickQuantities.has(key)) {
       pickQuantities.set(key, {
         totalPicked: 0,
+        ACCOUNTNO: pick.ACCOUNTNO || '',
         // Stokta yoksa konum bilgisini toplama verisinden al
         AREA: pick.AREA,
         AISLE: pick.AISLE,
@@ -81,7 +88,7 @@ export function mergeStockWithPicks(stockData, pickData) {
 
   // Toplanan miktarları stoğa geri ekle
   for (const [key, pickInfo] of pickQuantities) {
-    const [thm, article] = key.split('|');
+    const [accountNo, thm, article] = key.split('|');
     
     if (stockMap.has(key)) {
       // Mevcut stok kaydını güncelle
@@ -92,6 +99,7 @@ export function mergeStockWithPicks(stockData, pickData) {
     } else {
       // Yeni stok kaydı oluştur (stok bitmiş ürünler)
       stockMap.set(key, {
+        ACCOUNTNO: accountNo,
         PICKED_THM: thm,
         ARTICLE_CODE: article,
         AREA: pickInfo.AREA,
@@ -109,6 +117,9 @@ export function mergeStockWithPicks(stockData, pickData) {
 
   // Map'i array'e dönüştür ve sırala
   const updatedStock = Array.from(stockMap.values()).sort((a, b) => {
+    const accountComp = String(a.ACCOUNTNO || '').localeCompare(String(b.ACCOUNTNO || ''));
+    if (accountComp !== 0) return accountComp;
+
     // AREA'ya göre sırala
     const areaComp = a.AREA.localeCompare(b.AREA);
     if (areaComp !== 0) return areaComp;
@@ -147,7 +158,7 @@ export function stockToCSV(data) {
   }
 
   const headers = [
-    'PICKED_THM', 'ARTICLE_CODE', 'AREA', 'AISLE', 
+    'ACCOUNTNO', 'PICKED_THM', 'ARTICLE_CODE', 'AREA', 'AISLE',
     'COLUMN', 'SHELF', 'LEFT_OR_RIGHT', 'STOCK', 'RESERVED'
   ];
 

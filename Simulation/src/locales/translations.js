@@ -7,6 +7,11 @@ export const translations = {
     appTitle: 'Depo Simülasyonu',
     
     // Upload Section
+    accountFileSetTitle: 'Account No Dosya Seti',
+    accountFileSetHint: 'Aloke ve stok dosyalari solver icin zorunlu; Grup_Toplama benchmark icin kullanilir',
+    uploadAlokeFile: 'Aloke dosyasi yukle',
+    uploadGroupFile: 'Grup_Toplama dosyasi yukle',
+    uploadStockFile: 'Stok dosyasi yukle',
     uploadTitle: 'Excel veya CSV dosyasını buraya sürükleyin veya tıklayarak seçin',
     uploadHint: 'Sadece .xlsx, .xls ve .csv uzantılı dosyalar desteklenir',
     uploadAlternativeFile: 'Alternatif Lokasyon Yükle',
@@ -37,6 +42,11 @@ export const translations = {
     solverError: 'Solver hatası',
     solverAlternativeFileName: 'Solver alternatif lokasyonları',
     
+    accountFileQueued: 'hazirlandi',
+    accountBenchmarkLoaded: 'Grup_Toplama benchmark verisi yuklendi',
+    accountFilesReady: 'Account No dosya seti solver icin hazir',
+    accountFilesPartial: 'Account No dosya seti bekleniyor',
+
     // Progress stages
     stageTransform: 'Satırlar dönüştürülüyor...',
     stageFilter: 'MZN areaları filtreleniyor...',
@@ -72,6 +82,7 @@ export const translations = {
     solutionResults: 'Çözüm sonuçları',
     
     // Table columns
+    colAccountNo: 'ACCOUNTNO',
     colPicker: 'PICKER',
     colPickcar: 'PICKCAR',
     colDate: 'TARİH',
@@ -164,6 +175,8 @@ export const translations = {
     units: 'adet',
     stockRows: 'stok satırı',
     articles: 'ürün',
+    accountGroups: 'ACCOUNTNO grubu',
+    skippedOutOfLayout: 'yerlesim disi satir atlandi (aloke/stok)',
     solverResultTitle: 'Solver Sonucu',
     solverRuntimeWorkerLkh: 'Web Worker · LKH',
     solverRuntimeWorkerCpp: 'Web Worker · LKH’siz',
@@ -179,6 +192,11 @@ export const translations = {
     appTitle: 'Warehouse Simulation',
     
     // Upload Section
+    accountFileSetTitle: 'Account No File Set',
+    accountFileSetHint: 'Aloke and stock files are required for solving; Grup_Toplama is used as benchmark data',
+    uploadAlokeFile: 'Upload Aloke file',
+    uploadGroupFile: 'Upload Grup_Toplama file',
+    uploadStockFile: 'Upload stock file',
     uploadTitle: 'Drag and drop an Excel or CSV file here or click to select',
     uploadHint: 'Only .xlsx, .xls, and .csv files are supported',
     uploadAlternativeFile: 'Upload Alternatives',
@@ -208,6 +226,10 @@ export const translations = {
     solverComplete: 'Solver output loaded',
     solverError: 'Solver error',
     solverAlternativeFileName: 'Solver alternative locations',
+    accountFileQueued: 'queued',
+    accountBenchmarkLoaded: 'Grup_Toplama benchmark data loaded',
+    accountFilesReady: 'Account No file set is ready for solving',
+    accountFilesPartial: 'Waiting for Account No file set',
     
     // Progress stages
     stageTransform: 'Transforming rows...',
@@ -244,6 +266,7 @@ export const translations = {
     solutionResults: 'Solver result',
     
     // Table columns
+    colAccountNo: 'ACCOUNTNO',
     colPicker: 'PICKER',
     colPickcar: 'PICKCAR',
     colDate: 'DATE',
@@ -336,6 +359,8 @@ export const translations = {
     units: 'units',
     stockRows: 'stock rows',
     articles: 'articles',
+    accountGroups: 'ACCOUNTNO groups',
+    skippedOutOfLayout: 'out-of-layout rows skipped (aloke/stock)',
     solverResultTitle: 'Solver Result',
     solverRuntimeWorkerLkh: 'Web Worker · LKH',
     solverRuntimeWorkerCpp: 'Web Worker · LKH-free',

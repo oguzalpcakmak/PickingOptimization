@@ -8,6 +8,13 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  aggregateSolverSummaries,
+  annotateRowsWithAccount,
+  buildSolverInputGroups as buildSolverInputGroupsCommon,
+  parseCsvRows as parseCsvRowsCommon,
+  resolveSolverOptions as resolveSolverOptionsCommon
+} from '../src/utils/solverInputProcessor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,6 +109,11 @@ function rowsToCsv(headers, rows) {
   return `${lines.join('\n')}\n`;
 }
 
+function safePathPart(value) {
+  const safe = String(value || 'NO_ACCOUNT').replace(/[^a-z0-9._-]+/gi, '_');
+  return safe || 'NO_ACCOUNT';
+}
+
 function parseCsvRows(text) {
   const parsed = Papa.parse(text, {
     header: true,
@@ -138,6 +150,28 @@ function sheetToRows(workbook, sheetName) {
     .sheet_to_json(sheet, { defval: '', raw: false })
     .map(normalizeRawRow)
     .filter((row) => !isRowEmpty(row));
+}
+
+function rowsFromUpload(file, sheetCandidates = []) {
+  if (!file) {
+    throw new Error('Dosya yuklenmedi.');
+  }
+
+  const lowerFileName = file.originalname?.toLowerCase() || '';
+  if (lowerFileName.endsWith('.csv')) {
+    return parseCsvRows(file.buffer.toString('utf8'));
+  }
+
+  const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+  const sheetName = sheetCandidates.length > 0
+    ? findSheetName(workbook, sheetCandidates) || workbook.SheetNames[0]
+    : workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error('Workbook icinde okunabilir sheet bulunamadi.');
+  }
+
+  return sheetToRows(workbook, sheetName);
 }
 
 function pickLocationFromRow(row) {
@@ -482,59 +516,116 @@ app.get('/api/solver/status', (_req, res) => {
   });
 });
 
-app.post('/api/solve', upload.single('file'), async (req, res) => {
+app.post(
+  '/api/solve',
+  upload.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'alokeFile', maxCount: 1 },
+    { name: 'groupFile', maxCount: 1 },
+    { name: 'stockFile', maxCount: 1 }
+  ]),
+  async (req, res) => {
   const runId = `${Date.now()}-${crypto.randomUUID()}`;
   const runDir = path.join(runRoot, runId);
   const requestStarted = Date.now();
 
   try {
-    if (!req.file) {
+    const singleFile = req.files?.file?.[0];
+    const alokeFile = req.files?.alokeFile?.[0];
+    const groupFile = req.files?.groupFile?.[0];
+    const stockFile = req.files?.stockFile?.[0];
+
+    if (!singleFile && (!alokeFile || !stockFile)) {
       res.status(400).json({ error: 'Excel dosyasi yuklenmedi.' });
       return;
     }
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const pickSheetName = findSheetName(workbook, ['Grup Toplama Verisi']) || workbook.SheetNames[0];
-    const stockSheetName = findSheetName(workbook, ['Stok Bilgisi']);
+    const options = resolveSolverOptionsCommon(req.body || {});
+    let groups;
+    let inputStats;
 
-    if (!pickSheetName) {
-      res.status(400).json({ error: 'Workbook icinde pick sheet bulunamadi.' });
-      return;
+    if (alokeFile && stockFile) {
+      const alokeRows = rowsFromUpload(alokeFile, ['Aloke']);
+      const stockRows = rowsFromUpload(stockFile, ['Stok Bilgisi', 'stok', 'Stock']);
+      const benchmarkRows = groupFile
+        ? rowsFromUpload(groupFile, ['Grup Toplama Verisi', 'Grup_Toplama', 'Grup Toplama'])
+        : [];
+      const prepared = buildSolverInputGroupsCommon(alokeRows, stockRows);
+      groups = prepared.groups;
+      const benchmarkAccounts = new Set(
+        benchmarkRows.map((row) => String(row.ACCOUNTNO ?? '').trim()).filter(Boolean)
+      );
+      inputStats = {
+        ...prepared.stats,
+        alokeRows: alokeRows.length,
+        benchmarkRows: benchmarkRows.length,
+        benchmarkAccountCount: benchmarkAccounts.size
+      };
+    } else {
+      const workbook = XLSX.read(singleFile.buffer, { type: 'buffer' });
+      const pickSheetName = findSheetName(workbook, ['Grup Toplama Verisi']) || workbook.SheetNames[0];
+      const stockSheetName = findSheetName(workbook, ['Stok Bilgisi']);
+
+      if (!pickSheetName) {
+        res.status(400).json({ error: 'Workbook icinde pick sheet bulunamadi.' });
+        return;
+      }
+      if (!stockSheetName) {
+        res.status(400).json({
+          error: `"Stok Bilgisi" sheet'i bulunamadi. Mevcut sheetler: ${workbook.SheetNames.join(', ')}`
+        });
+        return;
+      }
+
+      const pickRows = sheetToRows(workbook, pickSheetName);
+      const stockRows = sheetToRows(workbook, stockSheetName);
+      const prepared = buildSolverInputGroupsCommon(pickRows, stockRows);
+      groups = prepared.groups;
+      inputStats = prepared.stats;
     }
-    if (!stockSheetName) {
-      res.status(400).json({
-        error: `"Stok Bilgisi" sheet'i bulunamadi. Mevcut sheetler: ${workbook.SheetNames.join(', ')}`
-      });
-      return;
-    }
 
-    const pickRows = sheetToRows(workbook, pickSheetName);
-    const stockRows = sheetToRows(workbook, stockSheetName);
-    const { orderCsv, stockCsv, stats: inputStats } = buildSolverInputs(pickRows, stockRows);
-    const options = resolveSolverOptions(req.body || {});
-
+    const pickRows = [];
+    const alternativeRows = [];
+    const summaries = [];
+    let solverPath = null;
+    let lkhPath = null;
     await fs.mkdir(runDir, { recursive: true });
-    await fs.writeFile(path.join(runDir, 'orders.csv'), orderCsv, 'utf8');
-    await fs.writeFile(path.join(runDir, 'stock.csv'), stockCsv, 'utf8');
 
-    const solverFiles = await runSolver(runDir, options);
-    const [pickCsv, altCsv, summary] = await Promise.all([
-      fs.readFile(solverFiles.pickPath, 'utf8'),
-      fs.readFile(solverFiles.altPath, 'utf8'),
-      readJson(solverFiles.summaryPath)
-    ]);
+    for (const group of groups) {
+      const accountDir = path.join(runDir, safePathPart(group.stats.accountNo));
+      await fs.mkdir(accountDir, { recursive: true });
+      await fs.writeFile(path.join(accountDir, 'orders.csv'), group.orderCsv, 'utf8');
+      await fs.writeFile(path.join(accountDir, 'stock.csv'), group.stockCsv, 'utf8');
+
+      const solverFiles = await runSolver(accountDir, options);
+      solverPath = solverFiles.solverPath;
+      lkhPath = solverFiles.lkhPath;
+      const [pickCsv, altCsv, summary] = await Promise.all([
+        fs.readFile(solverFiles.pickPath, 'utf8'),
+        fs.readFile(solverFiles.altPath, 'utf8'),
+        readJson(solverFiles.summaryPath)
+      ]);
+      pickRows.push(...annotateRowsWithAccount(parseCsvRowsCommon(pickCsv), group.accountNo));
+      alternativeRows.push(
+        ...parseCsvRowsCommon(altCsv).map((row) => ({
+          ...row,
+          ACCOUNTNO: group.stats.accountNo
+        }))
+      );
+      summaries.push(summary);
+    }
 
     res.json({
       ok: true,
       options,
       inputStats,
-      summary,
-      pickRows: parseCsvRows(pickCsv),
-      alternativeRows: parseCsvRows(altCsv),
+      summary: aggregateSolverSummaries(summaries, inputStats),
+      pickRows,
+      alternativeRows,
       runtime: {
         mode: 'server-native',
-        solverPath: solverFiles.solverPath,
-        lkhPath: solverFiles.lkhPath,
+        solverPath,
+        lkhPath,
         elapsedMs: Date.now() - requestStarted
       }
     });
@@ -546,7 +637,8 @@ app.post('/api/solve', upload.single('file'), async (req, res) => {
       await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
     }
   }
-});
+  }
+);
 
 if (existsSync(distDir)) {
   app.use(express.static(distDir));

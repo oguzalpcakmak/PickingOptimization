@@ -12,7 +12,8 @@ import {
 
 export const PICK_DATA_FORMATS = {
   LEGACY_EXCEL: 'legacy_excel',
-  SOLVER_OUTPUT: 'solver_output'
+  SOLVER_OUTPUT: 'solver_output',
+  ACCOUNT_PICK: 'account_pick'
 };
 
 const LEGACY_REQUIRED_COLUMNS = [
@@ -40,6 +41,22 @@ const SOLVER_REQUIRED_COLUMNS = [
   'LEFT_OR_RIGHT',
   'AMOUNT',
   'PICKCAR_ID'
+];
+
+const ACCOUNT_PICK_REQUIRED_COLUMNS = [
+  'OUTER_GROUP_ID',
+  'TOPLAYAN',
+  'TOPLAMA_THM',
+  'ARTICLE_CODE',
+  'TOPLAMA_TARIHI',
+  'ACCOUNTNO',
+  'AREA',
+  'AISLE',
+  'X',
+  'Y',
+  'Z',
+  'STOK_THM',
+  'ADET'
 ];
 
 function sanitizeColumnName(name) {
@@ -90,13 +107,28 @@ export function inspectPickData(rawData) {
     };
   }
 
+  const missingAccountPickColumns = ACCOUNT_PICK_REQUIRED_COLUMNS.filter((col) => !(col in firstRow));
+  if (missingAccountPickColumns.length === 0) {
+    return {
+      format: PICK_DATA_FORMATS.ACCOUNT_PICK,
+      rows: normalizedRows,
+      missingColumns: []
+    };
+  }
+
   const legacyMatchCount = LEGACY_REQUIRED_COLUMNS.length - missingLegacyColumns.length;
   const solverMatchCount = SOLVER_REQUIRED_COLUMNS.length - missingSolverColumns.length;
+  const accountPickMatchCount = ACCOUNT_PICK_REQUIRED_COLUMNS.length - missingAccountPickColumns.length;
+  const bestMatch = [
+    { missingColumns: missingLegacyColumns, matchCount: legacyMatchCount },
+    { missingColumns: missingSolverColumns, matchCount: solverMatchCount },
+    { missingColumns: missingAccountPickColumns, matchCount: accountPickMatchCount }
+  ].sort((a, b) => b.matchCount - a.matchCount)[0];
 
   return {
     format: null,
     rows: normalizedRows,
-    missingColumns: legacyMatchCount >= solverMatchCount ? missingLegacyColumns : missingSolverColumns
+    missingColumns: bestMatch.missingColumns
   };
 }
 
@@ -106,11 +138,42 @@ export function inspectPickData(rawData) {
  * @returns {{date: string, time: string}} Türk formatında tarih ve saat
  */
 export function transformDateTime(dateStr) {
-  if (!dateStr || dateStr.trim() === '') {
+  if (dateStr === undefined || dateStr === null || dateStr === '') {
     return { date: '', time: '' };
   }
 
-  const str = dateStr.trim();
+  const formatDateObject = (value, useUtc = false) => {
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) return null;
+
+    const year = useUtc ? value.getUTCFullYear() : value.getFullYear();
+    const month = (useUtc ? value.getUTCMonth() : value.getMonth()) + 1;
+    const day = useUtc ? value.getUTCDate() : value.getDate();
+    const hours = useUtc ? value.getUTCHours() : value.getHours();
+    const minutes = useUtc ? value.getUTCMinutes() : value.getMinutes();
+
+    return {
+      date: `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`,
+      time: hours === 0 && minutes === 0 ? '' : `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    };
+  };
+
+  if (dateStr instanceof Date) {
+    const formatted = formatDateObject(dateStr);
+    if (formatted) return formatted;
+  }
+
+  if (typeof dateStr === 'number' && Number.isFinite(dateStr)) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const serialDate = new Date(excelEpoch + Math.round(dateStr * 24 * 60 * 60 * 1000));
+    const formatted = formatDateObject(serialDate, true);
+    if (formatted) return formatted;
+  }
+
+  const str = String(dateStr).trim();
+  if (!str) {
+    return { date: '', time: '' };
+  }
+
   const formats = [
     /^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i,
     /^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})(AM|PM)$/i,
@@ -156,6 +219,20 @@ function toStringValue(value) {
   return value !== undefined && value !== null ? String(value) : '';
 }
 
+function stripLeadingZeros(value) {
+  const text = toStringValue(value).trim();
+  if (!/^\d+$/.test(text)) return text;
+  return String(parseInt(text, 10));
+}
+
+function getAccountNo(row) {
+  return toStringValue(row.ACCOUNTNO ?? row.FROM_ACCOUNTNO);
+}
+
+function getRouteGroupKey(row) {
+  return `${row.ACCOUNTNO || ''}|${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+}
+
 /**
  * Eski Excel satırını uygulamanın iç formatına dönüştürür.
  * @param {Object} row - Orijinal Excel satırı
@@ -163,16 +240,18 @@ function toStringValue(value) {
  */
 export function transformRow(row) {
   const { date, time } = transformDateTime(row['DATE_START_EXECUTION']);
+  const accountNo = getAccountNo(row);
 
   return {
     'PICKER_CODE': toStringValue(row['Kullanıcı Kodu']),
     'PICKCAR_THM': toStringValue(row['PICKCAR_THM']),
+    'ACCOUNTNO': accountNo,
     'DATE': date,
     'TIME': time,
     'AREA': toStringValue(row['AREA']),
-    'AISLE': toStringValue(row['AISLE']),
-    'COLUMN': toStringValue(row['X']),
-    'SHELF': toStringValue(row['Y']),
+    'AISLE': stripLeadingZeros(row['AISLE']),
+    'COLUMN': stripLeadingZeros(row['X']),
+    'SHELF': stripLeadingZeros(row['Y']),
     'LEFT_OR_RIGHT': toStringValue(row['Z']),
     'PICKED_THM': toStringValue(row['TOPLANAN_THM']),
     'ARTICLE_CODE': toStringValue(row['ARTICLE_CODE']),
@@ -180,18 +259,39 @@ export function transformRow(row) {
   };
 }
 
+function transformAccountPickRow(row) {
+  const { date, time } = transformDateTime(row['TOPLAMA_TARIHI']);
+
+  return {
+    'ACCOUNTNO': getAccountNo(row),
+    'PICKER_CODE': toStringValue(row['TOPLAYAN']),
+    'PICKCAR_THM': toStringValue(row['TOPLAMA_THM']),
+    'DATE': date,
+    'TIME': time,
+    'AREA': toStringValue(row['AREA']),
+    'AISLE': stripLeadingZeros(row['AISLE']),
+    'COLUMN': stripLeadingZeros(row['X']),
+    'SHELF': stripLeadingZeros(row['Y']),
+    'LEFT_OR_RIGHT': toStringValue(row['Z']),
+    'PICKED_THM': toStringValue(row['STOK_THM']),
+    'ARTICLE_CODE': toStringValue(row['ARTICLE_CODE']),
+    'PICKED_AMOUNT': toStringValue(row['ADET'])
+  };
+}
+
 function transformSolverRow(row, index) {
   const pickOrder = parseInt(row['PICK_ORDER'], 10);
 
   return {
+    'ACCOUNTNO': getAccountNo(row),
     'PICKER_CODE': toStringValue(row['PICKER_ID']),
     'PICKCAR_THM': toStringValue(row['PICKCAR_ID']),
     'DATE': '',
     'TIME': '',
     'AREA': toStringValue(row['FLOOR']),
-    'AISLE': toStringValue(row['AISLE']),
-    'COLUMN': toStringValue(row['COLUMN']),
-    'SHELF': toStringValue(row['SHELF']),
+    'AISLE': stripLeadingZeros(row['AISLE']),
+    'COLUMN': stripLeadingZeros(row['COLUMN']),
+    'SHELF': stripLeadingZeros(row['SHELF']),
     'LEFT_OR_RIGHT': toStringValue(row['LEFT_OR_RIGHT']),
     'PICKED_THM': toStringValue(row['THM_ID']),
     'ARTICLE_CODE': toStringValue(row['ARTICLE_CODE']),
@@ -277,6 +377,8 @@ function buildSimulationRows(orderedPicks) {
   );
 
   const stairStartRow = {
+    'ACCOUNTNO': firstPick.ACCOUNTNO,
+    'GROUP_KEY': firstPick.GROUP_KEY,
     'PICKER_CODE': firstPick.PICKER_CODE,
     'PICKCAR_THM': firstPick.PICKCAR_THM,
     'DATE': firstPick.DATE,
@@ -298,6 +400,8 @@ function buildSimulationRows(orderedPicks) {
   };
 
   const elevatorStartRow = {
+    'ACCOUNTNO': firstPick.ACCOUNTNO,
+    'GROUP_KEY': firstPick.GROUP_KEY,
     'PICKER_CODE': firstPick.PICKER_CODE,
     'PICKCAR_THM': firstPick.PICKCAR_THM,
     'DATE': firstPick.DATE,
@@ -340,6 +444,8 @@ function buildSimulationRows(orderedPicks) {
   totalDistance += returnDist;
 
   const elevatorReturnRow = {
+    'ACCOUNTNO': lastPick.ACCOUNTNO,
+    'GROUP_KEY': lastPick.GROUP_KEY,
     'PICKER_CODE': lastPick.PICKER_CODE,
     'PICKCAR_THM': lastPick.PICKCAR_THM,
     'DATE': lastPick.DATE,
@@ -367,6 +473,8 @@ function buildSimulationRows(orderedPicks) {
   totalDistance += elevatorToStairDist;
 
   const stairReturnRow = {
+    'ACCOUNTNO': lastPick.ACCOUNTNO,
+    'GROUP_KEY': lastPick.GROUP_KEY,
     'PICKER_CODE': lastPick.PICKER_CODE,
     'PICKCAR_THM': lastPick.PICKCAR_THM,
     'DATE': lastPick.DATE,
@@ -530,9 +638,13 @@ export function processExcel(rawData, onProgress = () => {}) {
       });
     }
 
-    return inspection.format === PICK_DATA_FORMATS.SOLVER_OUTPUT
-      ? transformSolverRow(row, index)
-      : transformRow(row);
+    if (inspection.format === PICK_DATA_FORMATS.SOLVER_OUTPUT) {
+      return transformSolverRow(row, index);
+    }
+    if (inspection.format === PICK_DATA_FORMATS.ACCOUNT_PICK) {
+      return transformAccountPickRow(row);
+    }
+    return transformRow(row);
   });
 
   const expandedRows =
@@ -551,7 +663,8 @@ export function processExcel(rawData, onProgress = () => {}) {
 
   const pickGroups = new Map();
   for (const row of mznRows) {
-    const key = `${row.PICKER_CODE}|${row.PICKCAR_THM}`;
+    const key = getRouteGroupKey(row);
+    row.GROUP_KEY = key;
     if (!pickGroups.has(key)) {
       pickGroups.set(key, []);
     }
@@ -577,6 +690,10 @@ export function processExcel(rawData, onProgress = () => {}) {
   }
 
   processedRows.sort((a, b) => {
+    const accountA = String(a.ACCOUNTNO || '');
+    const accountB = String(b.ACCOUNTNO || '');
+    if (accountA !== accountB) return accountA.localeCompare(accountB);
+
     const pickerA = String(a.PICKER_CODE || '');
     const pickerB = String(b.PICKER_CODE || '');
     if (pickerA !== pickerB) return pickerA.localeCompare(pickerB);
@@ -597,6 +714,7 @@ export function processExcel(rawData, onProgress = () => {}) {
     delete row.timeMinutes;
     delete row.SOURCE_PICK_ORDER;
     delete row.__SOURCE_INDEX;
+    delete row.GROUP_KEY;
   }
 
   const totalDistance = processedRows.reduce((sum, row) => sum + (row.STEP_DIST || 0), 0);
@@ -626,6 +744,7 @@ export function toCSV(data) {
   const headers = [
     'PICKER_CODE',
     'PICKCAR_THM',
+    'ACCOUNTNO',
     'DATE',
     'TIME',
     'AREA',

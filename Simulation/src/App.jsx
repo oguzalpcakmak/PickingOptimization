@@ -41,7 +41,12 @@ import {
 import { processExcel, inspectPickData, PICK_DATA_FORMATS } from './utils/excelProcessor';
 import { processAlternativeLocations } from './utils/alternativeLocationProcessor';
 import { processStockData, mergeStockWithPicks } from './utils/stockProcessor';
-import { solveWorkbookWithServer, solveWorkbookWithWasm } from './utils/clientSolver';
+import {
+  solveAccountFilesWithServer,
+  solveAccountFilesWithWasm,
+  solveWorkbookWithServer,
+  solveWorkbookWithWasm
+} from './utils/clientSolver';
 import { 
   ELEVATOR_1_AISLE, 
   ELEVATOR_2_AISLE, 
@@ -59,6 +64,39 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 const CLIENT_LKH_ENABLED = import.meta.env.VITE_ENABLE_CLIENT_LKH !== 'false';
+
+async function readTabularFile(uploadedFile, preferredSheets = []) {
+  const lowerFileName = uploadedFile.name?.toLowerCase() || '';
+
+  if (lowerFileName.endsWith('.csv')) {
+    const csvText = await uploadedFile.text();
+    const parsedCsv = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.replace(/^\uFEFF/, '').trim()
+    });
+
+    const parseErrors = parsedCsv.errors.filter((error) => error.code !== 'UndetectableDelimiter');
+    if (parseErrors.length > 0) {
+      throw new Error(parseErrors[0].message);
+    }
+
+    return parsedCsv.data;
+  }
+
+  const workbookData = await uploadedFile.arrayBuffer();
+  const workbook = XLSX.read(workbookData, { type: 'array' });
+  const sheetLookup = new Map(workbook.SheetNames.map((name) => [name.trim().toLowerCase(), name]));
+  const sheetName =
+    preferredSheets.map((name) => sheetLookup.get(name.toLowerCase())).find(Boolean) ||
+    workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error('Dosya okunamadi');
+  }
+
+  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+}
 
 const SOLVER_MODES = {
   'client-lkh': {
@@ -93,6 +131,7 @@ function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [lang, setLang] = useState('tr');
   const [file, setFile] = useState(null);
+  const [accountFiles, setAccountFiles] = useState({ aloke: null, group: null, stock: null });
   const [rawData, setRawData] = useState(null);
   const [processedData, setProcessedData] = useState(null);
   const [stats, setStats] = useState(null);
@@ -157,6 +196,7 @@ function App() {
 
   const loadTestData = useCallback(() => {
     setFile({ name: t(lang, 'testDataName') });
+    setAccountFiles({ aloke: null, group: null, stock: null });
     setRawData(null);
     setInputFormat(null);
     setSolverSummary(null);
@@ -442,6 +482,7 @@ function App() {
     if (!uploadedFile) return false;
 
     setFile(uploadedFile);
+    setAccountFiles({ aloke: null, group: null, stock: null });
     setRawData(null);
     setProcessedData(null);
     setStats(null);
@@ -566,6 +607,76 @@ function App() {
     return false; // Prevent default upload behavior
   }, [messageApi, lang]);
 
+  const handleAccountFileUpload = useCallback((kind) => (uploadedFile) => {
+    if (!uploadedFile) return false;
+
+    setAccountFiles((current) => ({ ...current, [kind]: uploadedFile }));
+    setFile(null);
+    setIsTestData(false);
+    setSolverSummary(null);
+    setSolverInputStats(null);
+    setSolverRuntime(null);
+    setSolverResultSnapshot(null);
+    setResultViewMode('actual');
+    setSelectedGroupData([]);
+    setCurrentSimStep(0);
+
+    if (kind !== 'group') {
+      messageApi.success(`${uploadedFile.name} ${t(lang, 'accountFileQueued')}`);
+      return false;
+    }
+
+    setProcessing(true);
+    setShowVisualizer(false);
+    setProgress({ stage: 'transform', progress: 0 });
+
+    (async () => {
+      try {
+        const groupRows = await readTabularFile(uploadedFile, [
+          'Grup Toplama Verisi',
+          'Grup_Toplama',
+          'Grup Toplama'
+        ]);
+        const inspection = inspectPickData(groupRows);
+        if (!inspection.format) {
+          messageApi.error(`${t(lang, 'missingColumns')}: ${inspection.missingColumns.join(', ')}`);
+          return;
+        }
+
+        const { data: processedResult, stats: processStats } = processExcel(inspection.rows, (p) => {
+          setProgress(p);
+        });
+
+        const benchmarkSnapshot = {
+          rawData: inspection.rows,
+          processedData: processedResult,
+          stats: processStats,
+          inputFormat: inspection.format,
+          updatedStockData: null,
+          stockStats: null,
+          alternativeFile: null,
+          alternativeLocations: [],
+          alternativeStats: null
+        };
+
+        setRawData(inspection.rows);
+        setProcessedData(processedResult);
+        setStats(processStats);
+        setInputFormat(inspection.format);
+        setActualResultSnapshot(benchmarkSnapshot);
+        applyResultSnapshot('actual', benchmarkSnapshot);
+        messageApi.success(t(lang, 'accountBenchmarkLoaded'));
+      } catch (error) {
+        messageApi.error(`${t(lang, 'excelReadError')}: ${error.message}`);
+        console.error(error);
+      } finally {
+        setProcessing(false);
+      }
+    })();
+
+    return false;
+  }, [applyResultSnapshot, lang, messageApi]);
+
   const loadWasmFixture = useCallback(async (filename) => {
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}test-fixtures/${filename}`);
@@ -580,7 +691,9 @@ function App() {
   }, [handleFileUpload, lang, messageApi]);
 
   const runCppSolver = useCallback(() => {
-    if (!file || isTestData) {
+    const hasAccountSolverFiles = Boolean(accountFiles.aloke && accountFiles.stock);
+
+    if ((!file || isTestData) && !hasAccountSolverFiles) {
       messageApi.warning(t(lang, 'solverNeedsFile'));
       return;
     }
@@ -612,10 +725,16 @@ function App() {
         };
         const payload =
           mode.execution === 'client'
-            ? await solveWorkbookWithWasm(file, options, ({ progress: workerProgress, detail }) => {
-                setProgress({ stage: detail === 'loading-lkh' ? 'loading-lkh' : 'solver', progress: workerProgress });
-              })
-            : await solveWorkbookWithServer(file, options);
+            ? hasAccountSolverFiles
+              ? await solveAccountFilesWithWasm(accountFiles, options, ({ progress: workerProgress, detail }) => {
+                  setProgress({ stage: detail === 'loading-lkh' ? 'loading-lkh' : 'solver', progress: workerProgress });
+                })
+              : await solveWorkbookWithWasm(file, options, ({ progress: workerProgress, detail }) => {
+                  setProgress({ stage: detail === 'loading-lkh' ? 'loading-lkh' : 'solver', progress: workerProgress });
+                })
+            : hasAccountSolverFiles
+              ? await solveAccountFilesWithServer(accountFiles, options)
+              : await solveWorkbookWithServer(file, options);
 
         setProgress({ stage: 'transform', progress: 0 });
         const { data: processedResult, stats: processStats } = processExcel(payload.pickRows || [], (p) => {
@@ -661,7 +780,7 @@ function App() {
         setProcessing(false);
       }
     })();
-  }, [actualResultSnapshot, applyResultSnapshot, file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
+  }, [accountFiles, actualResultSnapshot, applyResultSnapshot, file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
 
   const downloadExcel = useCallback(() => {
     if (!processedData) return;
@@ -691,6 +810,7 @@ function App() {
 
   const reset = useCallback(() => {
     setFile(null);
+    setAccountFiles({ aloke: null, group: null, stock: null });
     setRawData(null);
     setProcessedData(null);
     setStats(null);
@@ -714,6 +834,9 @@ function App() {
     messageApi.info(t(lang, 'reset'));
   }, [messageApi, lang]);
 
+  const hasAccountSolverFiles = Boolean(accountFiles.aloke && accountFiles.stock);
+  const hasAnyAccountFile = Boolean(accountFiles.aloke || accountFiles.group || accountFiles.stock);
+  const canRunSolver = (file && !isTestData) || hasAccountSolverFiles;
   const hasVisualizerData = processedData !== null || alternativeLocations.length > 0;
 
   /**
@@ -741,6 +864,7 @@ function App() {
   const outputColumns = [
     { title: t(lang, 'colPicker'), dataIndex: 'PICKER_CODE', key: 'picker', width: 80 },
     { title: t(lang, 'colPickcar'), dataIndex: 'PICKCAR_THM', key: 'pickcar', width: 110 },
+    { title: t(lang, 'colAccountNo'), dataIndex: 'ACCOUNTNO', key: 'accountNo', width: 100 },
     { title: t(lang, 'colDate'), dataIndex: 'DATE', key: 'date', width: 100 },
     { title: t(lang, 'colTime'), dataIndex: 'TIME', key: 'time', width: 60 },
     { title: t(lang, 'colArea'), dataIndex: 'AREA', key: 'area', width: 70, render: (text) => <Tag color="blue">{text}</Tag> },
@@ -866,6 +990,44 @@ function App() {
                         <Text type="secondary" style={{ textAlign: 'center' }}>
                           {t(lang, 'uploadAlternativeHint')}
                         </Text>
+                        <Card
+                          size="small"
+                          title={t(lang, 'accountFileSetTitle')}
+                          style={{ width: '100%' }}
+                        >
+                          <Flex vertical gap={8}>
+                            <Upload
+                              accept=".csv,.xlsx,.xls"
+                              showUploadList={false}
+                              beforeUpload={handleAccountFileUpload('aloke')}
+                            >
+                              <Button block icon={<CloudUploadOutlined />}>
+                                {accountFiles.aloke?.name || t(lang, 'uploadAlokeFile')}
+                              </Button>
+                            </Upload>
+                            <Upload
+                              accept=".csv,.xlsx,.xls"
+                              showUploadList={false}
+                              beforeUpload={handleAccountFileUpload('group')}
+                            >
+                              <Button block icon={<FileTextOutlined />}>
+                                {accountFiles.group?.name || t(lang, 'uploadGroupFile')}
+                              </Button>
+                            </Upload>
+                            <Upload
+                              accept=".csv,.xlsx,.xls"
+                              showUploadList={false}
+                              beforeUpload={handleAccountFileUpload('stock')}
+                            >
+                              <Button block icon={<TableOutlined />}>
+                                {accountFiles.stock?.name || t(lang, 'uploadStockFile')}
+                              </Button>
+                            </Upload>
+                            <Text type="secondary" style={{ textAlign: 'center' }}>
+                              {t(lang, 'accountFileSetHint')}
+                            </Text>
+                          </Flex>
+                        </Card>
                       </Flex>
                     )}
 
@@ -894,6 +1056,21 @@ function App() {
                 type="success"
                 showIcon
                 icon={<FileTextOutlined />}
+              />
+            )}
+
+            {hasAnyAccountFile && (
+              <Alert
+                style={{ marginTop: 16 }}
+                message={t(lang, hasAccountSolverFiles ? 'accountFilesReady' : 'accountFilesPartial')}
+                description={[
+                  accountFiles.aloke && `Aloke: ${accountFiles.aloke.name}`,
+                  accountFiles.group && `Grup_Toplama: ${accountFiles.group.name}`,
+                  accountFiles.stock && `Stok: ${accountFiles.stock.name}`
+                ].filter(Boolean).join(' | ')}
+                type={hasAccountSolverFiles ? 'success' : 'info'}
+                showIcon
+                icon={<TableOutlined />}
               />
             )}
 
@@ -1054,7 +1231,10 @@ function App() {
               </Row>
               {solverInputStats && (
                 <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-                  {solverInputStats.orderArticles} {t(lang, 'articles')} | {solverInputStats.totalDemand} {t(lang, 'units')} | {solverInputStats.solverStockRows} {t(lang, 'stockRows')}
+                  {solverInputStats.accountCount || 1} {t(lang, 'accountGroups')} | {solverInputStats.orderArticles} {t(lang, 'articles')} | {solverInputStats.totalDemand} {t(lang, 'units')} | {solverInputStats.solverStockRows} {t(lang, 'stockRows')}
+                  {(solverInputStats.skippedOutOfLayoutPickRows || solverInputStats.skippedOutOfLayoutStockRows) ? (
+                    <> | {solverInputStats.skippedOutOfLayoutPickRows || 0}/{solverInputStats.skippedOutOfLayoutStockRows || 0} {t(lang, 'skippedOutOfLayout')}</>
+                  ) : null}
                 </Text>
               )}
             </Card>
@@ -1084,7 +1264,7 @@ function App() {
           {/* Action Buttons */}
           <Card style={{ marginBottom: 24 }}>
             <Flex wrap="wrap" gap={12} justify="center">
-              {file && !isTestData && (
+              {canRunSolver && (
                 <>
                   <Select
                     value={solverMode}
@@ -1152,7 +1332,7 @@ function App() {
                   {showVisualizer ? t(lang, 'hideVisualization') : t(lang, 'visualize')}
                 </Button>
               )}
-              {(file || processedData) && (
+              {(file || processedData || hasAnyAccountFile) && (
                 <Button 
                   danger
                   icon={<ReloadOutlined />} 
