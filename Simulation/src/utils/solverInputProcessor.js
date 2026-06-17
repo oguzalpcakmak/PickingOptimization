@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { calculateStockQuantity, STOCK_FORMULAS } from './stockQuantity.js';
 
 const VALID_FLOORS = new Set(['MZN1', 'MZN2', 'MZN3', 'MZN4', 'MZN5', 'MZN6']);
 const ARTICLE_SELECTIONS = new Set(['grouped', 'bucket-cheapest', 'global-cheapest']);
@@ -134,7 +135,7 @@ function pickLocationFromRow(row) {
   };
 }
 
-function stockLocationFromRow(row) {
+function stockLocationFromRow(row, { includePlannedIn = true } = {}) {
   const article = toInt(getValue(row, ['ARTICLE_CODE']));
   const floor = normalizeFloor(getValue(row, ['ACT_AREA', 'FLOOR', 'AREA']));
   const thm = toText(getValue(row, ['THM_ID', 'PICKED_THM', 'TOPLANAN_THM', 'STOK_THM']));
@@ -142,7 +143,7 @@ function stockLocationFromRow(row) {
   const column = toInt(getValue(row, ['ACT_X', 'COLUMN', 'X']));
   const shelf = toInt(getValue(row, ['ACT_Y', 'SHELF', 'Y']));
   const side = normalizeSide(getValue(row, ['ACT_Z', 'LEFT_OR_RIGHT', 'RIGHT_OR_LEFT', 'Z']));
-  const stock = toInt(getValue(row, ['Stok', 'STOCK', 'STOCK_AMOUNT', 'QTY_STOCK']));
+  const stock = calculateStockQuantity(row, { includePlannedIn });
   const accountNo = normalizeAccountNo(getValue(row, ['ACCOUNTNO', 'FROM_ACCOUNTNO']));
 
   return {
@@ -153,7 +154,7 @@ function stockLocationFromRow(row) {
     column,
     shelf,
     side,
-    stock: stock && stock > 0 ? stock : 0,
+    stock,
     accountNo
   };
 }
@@ -214,6 +215,8 @@ export function buildSolverInputGroups(pickRowsRaw, stockRowsRaw) {
   const pickRows = pickRowsRaw.map(normalizeRawRow).filter((row) => !isRowEmpty(row));
   const stockRows = stockRowsRaw.map(normalizeRawRow).filter((row) => !isRowEmpty(row));
   const useAccountGrouping = pickRows.some(hasAccountValue);
+  const hasAllocationDemand = pickRows.some((row) => toText(getValue(row, ['FROM_ACCOUNTNO'])) !== '');
+  const includePlannedInStock = !hasAllocationDemand;
 
   const demands = new Map();
   const pickedLocations = [];
@@ -256,7 +259,7 @@ export function buildSolverInputGroups(pickRowsRaw, stockRowsRaw) {
   let skippedOutOfLayoutStockRows = 0;
 
   for (const row of stockRows) {
-    const stock = stockLocationFromRow(row);
+    const stock = stockLocationFromRow(row, { includePlannedIn: includePlannedInStock });
     if (!useAccountGrouping) {
       stock.accountNo = '';
     }
@@ -382,7 +385,8 @@ export function buildSolverInputGroups(pickRowsRaw, stockRowsRaw) {
     skippedOutOfLayoutPickRows,
     skippedOutOfLayoutStockRows,
     allocationDemandRows,
-    accountGrouping: useAccountGrouping
+    accountGrouping: useAccountGrouping,
+    stockFormula: includePlannedInStock ? STOCK_FORMULAS.thm : STOCK_FORMULAS.allocation
   };
 
   return {

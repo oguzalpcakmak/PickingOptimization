@@ -1,24 +1,17 @@
-/**
- * Stok verisi işleme fonksiyonları
- * "Stok Bilgisi" sheet'ini işler ve toplama verileriyle birleştirir
- */
+import { calculateStockQuantity, getStockQuantityComponents } from './stockQuantity.js';
 
 /**
- * Stok Bilgisi satırını dönüştürür
- * @param {Object} row - Orijinal Excel satırı
- * @returns {Object} Dönüştürülmüş satır
+ * Processes the "Stok Bilgisi" sheet and merges it with pick results.
  */
+
 export function transformStockRow(row) {
-  const toString = (val) => val !== undefined && val !== null ? String(val) : '';
+  const toString = (val) => (val !== undefined && val !== null ? String(val) : '');
   const stripLeadingZeros = (val) => {
     const text = toString(val).trim();
     if (!/^\d+$/.test(text)) return text;
     return String(parseInt(text, 10));
   };
-  const toNumber = (val) => {
-    const num = parseInt(val, 10);
-    return isNaN(num) ? 0 : num;
-  };
+  const { qtyStock, plannedIn, plannedOut } = getStockQuantityComponents(row);
 
   return {
     ACCOUNTNO: toString(row['ACCOUNTNO']),
@@ -29,48 +22,40 @@ export function transformStockRow(row) {
     COLUMN: stripLeadingZeros(row['ACT_X']),
     SHELF: stripLeadingZeros(row['ACT_Y']),
     LEFT_OR_RIGHT: toString(row['ACT_Z']),
-    STOCK: toNumber(row['Stok'] ?? row['STOCK'] ?? row['QTY_STOCK']),
-    RESERVED: toNumber(row['Rezerve'] ?? row['RESERVED'] ?? row['QTY_STOCK_IN_PLANNED'])
+    STOCK: calculateStockQuantity(row),
+    RESERVED: plannedIn,
+    QTY_STOCK: qtyStock,
+    QTY_STOCK_IN_PLANNED: plannedIn,
+    QTY_STOCK_OUT_PLANNED: plannedOut
   };
 }
 
-/**
- * Excel'den gelen stok verilerini işler
- * @param {Array} rawStockData - Ham stok verileri
- * @returns {Array} Dönüştürülmüş stok verileri
- */
 export function processStockData(rawStockData) {
-  return rawStockData.map(row => transformStockRow(row));
+  return rawStockData.map((row) => transformStockRow(row));
 }
 
 /**
- * Stok verisini toplama verisiyle birleştirir ve günceller
- * Toplanan miktarları stoğa geri ekler çünkü mevcut veri toplamadan sonraki stok
- * @param {Array} stockData - İşlenmiş stok verileri
- * @param {Array} pickData - İşlenmiş toplama verileri
- * @returns {Object} Güncellenmiş stok verileri ve istatistikler
+ * Adds picked quantities back because the stock sheet usually represents
+ * post-pick state.
  */
 export function mergeStockWithPicks(stockData, pickData) {
-  // Stok verisini Map'e dönüştür (key: PICKED_THM|ARTICLE_CODE)
   const stockMap = new Map();
-  
+
   for (const stock of stockData) {
     const key = `${stock.ACCOUNTNO || ''}|${stock.PICKED_THM}|${stock.ARTICLE_CODE}`;
     stockMap.set(key, { ...stock });
   }
 
-  // Toplama verilerini grupla ve toplam miktarları hesapla
   const pickQuantities = new Map();
-  
+
   for (const pick of pickData) {
     const key = `${pick.ACCOUNTNO || ''}|${pick.PICKED_THM}|${pick.ARTICLE_CODE}`;
-    const amount = parseInt(pick.PICKED_AMOUNT) || 1;
-    
+    const amount = parseInt(pick.PICKED_AMOUNT, 10) || 1;
+
     if (!pickQuantities.has(key)) {
       pickQuantities.set(key, {
         totalPicked: 0,
         ACCOUNTNO: pick.ACCOUNTNO || '',
-        // Stokta yoksa konum bilgisini toplama verisinden al
         AREA: pick.AREA,
         AISLE: pick.AISLE,
         COLUMN: pick.COLUMN,
@@ -81,23 +66,19 @@ export function mergeStockWithPicks(stockData, pickData) {
     pickQuantities.get(key).totalPicked += amount;
   }
 
-  // İstatistikler
   let updatedCount = 0;
   let newStockCount = 0;
   let totalAddedBack = 0;
 
-  // Toplanan miktarları stoğa geri ekle
   for (const [key, pickInfo] of pickQuantities) {
     const [accountNo, thm, article] = key.split('|');
-    
+
     if (stockMap.has(key)) {
-      // Mevcut stok kaydını güncelle
       const stockItem = stockMap.get(key);
       stockItem.STOCK += pickInfo.totalPicked;
       totalAddedBack += pickInfo.totalPicked;
       updatedCount++;
     } else {
-      // Yeni stok kaydı oluştur (stok bitmiş ürünler)
       stockMap.set(key, {
         ACCOUNTNO: accountNo,
         PICKED_THM: thm,
@@ -108,30 +89,29 @@ export function mergeStockWithPicks(stockData, pickData) {
         SHELF: pickInfo.SHELF,
         LEFT_OR_RIGHT: pickInfo.LEFT_OR_RIGHT,
         STOCK: pickInfo.totalPicked,
-        RESERVED: 0
+        RESERVED: 0,
+        QTY_STOCK: 0,
+        QTY_STOCK_IN_PLANNED: 0,
+        QTY_STOCK_OUT_PLANNED: 0
       });
       totalAddedBack += pickInfo.totalPicked;
       newStockCount++;
     }
   }
 
-  // Map'i array'e dönüştür ve sırala
   const updatedStock = Array.from(stockMap.values()).sort((a, b) => {
     const accountComp = String(a.ACCOUNTNO || '').localeCompare(String(b.ACCOUNTNO || ''));
     if (accountComp !== 0) return accountComp;
 
-    // AREA'ya göre sırala
-    const areaComp = a.AREA.localeCompare(b.AREA);
+    const areaComp = String(a.AREA || '').localeCompare(String(b.AREA || ''));
     if (areaComp !== 0) return areaComp;
-    
-    // AISLE'a göre sırala
-    const aisleA = parseInt(a.AISLE) || 0;
-    const aisleB = parseInt(b.AISLE) || 0;
+
+    const aisleA = parseInt(a.AISLE, 10) || 0;
+    const aisleB = parseInt(b.AISLE, 10) || 0;
     if (aisleA !== aisleB) return aisleA - aisleB;
-    
-    // COLUMN'a göre sırala
-    const colA = parseInt(a.COLUMN) || 0;
-    const colB = parseInt(b.COLUMN) || 0;
+
+    const colA = parseInt(a.COLUMN, 10) || 0;
+    const colB = parseInt(b.COLUMN, 10) || 0;
     return colA - colB;
   });
 
@@ -147,24 +127,28 @@ export function mergeStockWithPicks(stockData, pickData) {
   return { data: updatedStock, stats };
 }
 
-/**
- * Güncellenmiş stok verisini CSV formatına çevirir
- * @param {Array} data - Güncellenmiş stok verileri
- * @returns {string} CSV string
- */
 export function stockToCSV(data) {
   if (!data || data.length === 0) {
     return '';
   }
 
   const headers = [
-    'ACCOUNTNO', 'PICKED_THM', 'ARTICLE_CODE', 'AREA', 'AISLE',
-    'COLUMN', 'SHELF', 'LEFT_OR_RIGHT', 'STOCK', 'RESERVED'
+    'ACCOUNTNO',
+    'PICKED_THM',
+    'ARTICLE_CODE',
+    'AREA',
+    'AISLE',
+    'COLUMN',
+    'SHELF',
+    'LEFT_OR_RIGHT',
+    'STOCK',
+    'RESERVED',
+    'QTY_STOCK',
+    'QTY_STOCK_IN_PLANNED',
+    'QTY_STOCK_OUT_PLANNED'
   ];
 
-  const rows = data.map(row => 
-    headers.map(h => row[h] !== undefined ? row[h] : '').join(';')
-  );
+  const rows = data.map((row) => headers.map((h) => (row[h] !== undefined ? row[h] : '')).join(';'));
 
   return [headers.join(';'), ...rows].join('\n');
 }
