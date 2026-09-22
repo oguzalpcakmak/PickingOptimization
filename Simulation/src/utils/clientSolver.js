@@ -101,22 +101,43 @@ export async function solveAccountFilesWithWasm(files, options, onProgress) {
   });
 }
 
+const SERVER_POLL_INTERVAL_MS = 2000;
+
+async function readServerSolveResponse(response) {
+  let payload = await response.json().catch(() => ({}));
+  if (!response.ok && response.status !== 202) {
+    throw new Error(payload.error || `Server solver ${response.status} koduyla hata verdi.`);
+  }
+
+  while (response.status === 202 && payload.jobId) {
+    await new Promise((resolve) => setTimeout(resolve, SERVER_POLL_INTERVAL_MS));
+    response = await fetch(`/api/solve/${encodeURIComponent(payload.jobId)}`, {
+      cache: 'no-store'
+    });
+    payload = await response.json().catch(() => ({}));
+    if (!response.ok && response.status !== 202) {
+      throw new Error(payload.error || `Server solver ${response.status} koduyla hata verdi.`);
+    }
+  }
+
+  return payload;
+}
+
 export async function solveWorkbookWithServer(file, options) {
   const form = new FormData();
   form.append('file', file);
+  form.append('async', '1');
   form.append('profile', options.profile);
   form.append('articleSelection', options.articleSelection);
   form.append('candidateGroupWidth', String(options.candidateGroupWidth));
   form.append('timeLimit', String(options.timeLimit));
+  form.append('turnstileToken', options.turnstileToken || '');
 
   const response = await fetch('/api/solve', {
     method: 'POST',
     body: form
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `Server solver ${response.status} koduyla hata verdi.`);
-  }
+  const payload = await readServerSolveResponse(response);
 
   return {
     ...payload,
@@ -134,19 +155,18 @@ export async function solveAccountFilesWithServer(files, options) {
   form.append('alokeFile', files.aloke);
   if (files.group) form.append('groupFile', files.group);
   form.append('stockFile', files.stock);
+  form.append('async', '1');
   form.append('profile', options.profile);
   form.append('articleSelection', options.articleSelection);
   form.append('candidateGroupWidth', String(options.candidateGroupWidth));
   form.append('timeLimit', String(options.timeLimit));
+  form.append('turnstileToken', options.turnstileToken || '');
 
   const response = await fetch('/api/solve', {
     method: 'POST',
     body: form
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `Server solver ${response.status} koduyla hata verdi.`);
-  }
+  const payload = await readServerSolveResponse(response);
 
   return {
     ...payload,

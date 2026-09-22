@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,18 @@ const appRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(appRoot, '..');
 const distDir = path.join(appRoot, 'dist');
 const runRoot = path.join(appRoot, 'tmp', 'solver-runs');
+const solveJobs = new Map();
+const JOB_RETENTION_MS = 60 * 60 * 1000;
+const solveAttempts = new Map();
+const SOLVE_RATE_WINDOW_MS = Number(process.env.SOLVE_RATE_WINDOW_MS || 10 * 60 * 1000);
+const SOLVE_RATE_MAX = Number(process.env.SOLVE_RATE_MAX || 5);
+const MAX_CONCURRENT_SOLVERS = Number(process.env.MAX_CONCURRENT_SOLVERS || 1);
+const TURNSTILE_SECRET_FILE = process.env.TURNSTILE_SECRET_FILE || '/etc/picking-optimization/turnstile-secret';
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || (
+  existsSync(TURNSTILE_SECRET_FILE) ? readFileSync(TURNSTILE_SECRET_FILE, 'utf8').trim() : ''
+);
+const TURNSTILE_REQUIRED = process.env.TURNSTILE_REQUIRED === '1';
+let activeSolverRuns = 0;
 
 const PORT = Number(process.env.PORT || 5174);
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 80);
@@ -37,6 +49,54 @@ const upload = multer({
 
 const VALID_FLOORS = new Set(['MZN1', 'MZN2', 'MZN3', 'MZN4', 'MZN5', 'MZN6']);
 const ARTICLE_SELECTIONS = new Set(['grouped', 'bucket-cheapest', 'global-cheapest']);
+
+function clientIp(req) {
+  return String(req.headers['cf-connecting-ip'] || req.ip || req.socket.remoteAddress || 'unknown');
+}
+
+function enforceSolveRateLimit(req, res, next) {
+  const now = Date.now();
+  const ip = clientIp(req);
+  const attempts = (solveAttempts.get(ip) || []).filter((timestamp) => now - timestamp < SOLVE_RATE_WINDOW_MS);
+  if (attempts.length >= SOLVE_RATE_MAX) {
+    const retryAfter = Math.max(1, Math.ceil((SOLVE_RATE_WINDOW_MS - (now - attempts[0])) / 1000));
+    res.set('Retry-After', String(retryAfter));
+    res.status(429).json({ error: 'Cok fazla cozum istegi gonderildi. Lutfen daha sonra tekrar deneyin.' });
+    return;
+  }
+  attempts.push(now);
+  solveAttempts.set(ip, attempts);
+  next();
+}
+
+async function verifyTurnstile(token, ip) {
+  if (!TURNSTILE_REQUIRED) return;
+  if (!TURNSTILE_SECRET_KEY) {
+    const error = new Error('Turnstile sunucu anahtari yapilandirilmamis.');
+    error.statusCode = 503;
+    throw error;
+  }
+  if (!token) {
+    const error = new Error('Guvenlik dogrulamasi eksik.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const body = new URLSearchParams({ secret: TURNSTILE_SECRET_KEY, response: token });
+  if (ip && ip !== 'unknown') body.set('remoteip', ip);
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+    signal: AbortSignal.timeout(10_000)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.success !== true) {
+    const error = new Error('Guvenlik dogrulamasi basarisiz. Sayfayi yenileyip tekrar deneyin.');
+    error.statusCode = 403;
+    throw error;
+  }
+}
 
 function sanitizeColumnName(name) {
   return String(name ?? '').replace(/^\uFEFF/, '').trim();
@@ -383,7 +443,7 @@ function resolveSolverOptions(body) {
     profile,
     articleSelection,
     candidateGroupWidth: Math.round(clampNumber(body.candidateGroupWidth, 1, 20, 2)),
-    timeLimit: clampNumber(body.timeLimit, 1, 600, 120)
+    timeLimit: clampNumber(body.timeLimit, 1, 1200, 1200)
   };
 }
 
@@ -502,30 +562,7 @@ async function readJson(pathname) {
   return JSON.parse(await fs.readFile(pathname, 'utf8'));
 }
 
-const app = express();
-
-app.get('/api/solver/status', (_req, res) => {
-  const solverPath = process.env.CPP_SOLVER_PATH || DEFAULT_SOLVER_PATH;
-  const lkhPath = process.env.LKH_PATH || DEFAULT_LKH_PATH;
-  res.json({
-    ok: true,
-    solverPath,
-    solverAvailable: existsSync(solverPath),
-    lkhPath,
-    lkhAvailable: existsSync(lkhPath)
-  });
-});
-
-app.post(
-  '/api/solve',
-  upload.fields([
-    { name: 'file', maxCount: 1 },
-    { name: 'alokeFile', maxCount: 1 },
-    { name: 'groupFile', maxCount: 1 },
-    { name: 'stockFile', maxCount: 1 }
-  ]),
-  async (req, res) => {
-  const runId = `${Date.now()}-${crypto.randomUUID()}`;
+async function solveUploadedRequest(req, runId) {
   const runDir = path.join(runRoot, runId);
   const requestStarted = Date.now();
 
@@ -536,8 +573,7 @@ app.post(
     const stockFile = req.files?.stockFile?.[0];
 
     if (!singleFile && (!alokeFile || !stockFile)) {
-      res.status(400).json({ error: 'Excel dosyasi yuklenmedi.' });
-      return;
+      throw new Error('Excel dosyasi yuklenmedi.');
     }
 
     const options = resolveSolverOptionsCommon(req.body || {});
@@ -566,15 +602,11 @@ app.post(
       const pickSheetName = findSheetName(workbook, ['Grup Toplama Verisi']) || workbook.SheetNames[0];
       const stockSheetName = findSheetName(workbook, ['Stok Bilgisi']);
 
-      if (!pickSheetName) {
-        res.status(400).json({ error: 'Workbook icinde pick sheet bulunamadi.' });
-        return;
-      }
+      if (!pickSheetName) throw new Error('Workbook icinde pick sheet bulunamadi.');
       if (!stockSheetName) {
-        res.status(400).json({
-          error: `"Stok Bilgisi" sheet'i bulunamadi. Mevcut sheetler: ${workbook.SheetNames.join(', ')}`
-        });
-        return;
+        throw new Error(
+          `"Stok Bilgisi" sheet'i bulunamadi. Mevcut sheetler: ${workbook.SheetNames.join(', ')}`
+        );
       }
 
       const pickRows = sheetToRows(workbook, pickSheetName);
@@ -607,15 +639,12 @@ app.post(
       ]);
       pickRows.push(...annotateRowsWithAccount(parseCsvRowsCommon(pickCsv), group.accountNo));
       alternativeRows.push(
-        ...parseCsvRowsCommon(altCsv).map((row) => ({
-          ...row,
-          ACCOUNTNO: group.stats.accountNo
-        }))
+        ...parseCsvRowsCommon(altCsv).map((row) => ({ ...row, ACCOUNTNO: group.stats.accountNo }))
       );
       summaries.push(summary);
     }
 
-    res.json({
+    return {
       ok: true,
       options,
       inputStats,
@@ -628,17 +657,120 @@ app.post(
         lkhPath,
         elapsedMs: Date.now() - requestStarted
       }
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Solver calistirilirken hata olustu.' });
+    };
   } finally {
     if (process.env.KEEP_SOLVER_RUNS !== '1') {
       await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
     }
   }
+}
+
+const app = express();
+
+app.get('/api/solver/status', (_req, res) => {
+  const solverPath = process.env.CPP_SOLVER_PATH || DEFAULT_SOLVER_PATH;
+  const lkhPath = process.env.LKH_PATH || DEFAULT_LKH_PATH;
+  res.json({
+    ok: true,
+    solverPath,
+    solverAvailable: existsSync(solverPath),
+    lkhPath,
+    lkhAvailable: existsSync(lkhPath),
+    turnstileRequired: TURNSTILE_REQUIRED,
+    turnstileConfigured: Boolean(TURNSTILE_SECRET_KEY),
+    activeSolverRuns,
+    maxConcurrentSolvers: MAX_CONCURRENT_SOLVERS
+  });
+});
+
+app.get('/api/solve/:jobId', (req, res) => {
+  const job = solveJobs.get(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: 'Cozum isi bulunamadi veya suresi doldu.' });
+    return;
+  }
+
+  if (job.status === 'running') {
+    res.status(202).json({ ok: true, jobId: req.params.jobId, status: 'running' });
+    return;
+  }
+
+  solveJobs.delete(req.params.jobId);
+  if (job.status === 'failed') {
+    res.status(500).json({ error: job.error });
+    return;
+  }
+  res.json(job.result);
+});
+
+app.post(
+  '/api/solve',
+  enforceSolveRateLimit,
+  upload.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'alokeFile', maxCount: 1 },
+    { name: 'groupFile', maxCount: 1 },
+    { name: 'stockFile', maxCount: 1 }
+  ]),
+  async (req, res) => {
+  const runId = `${Date.now()}-${crypto.randomUUID()}`;
+
+  try {
+    await verifyTurnstile(req.body?.turnstileToken, clientIp(req));
+    if (activeSolverRuns >= MAX_CONCURRENT_SOLVERS) {
+      res.status(429).json({ error: 'Solver su anda mesgul. Mevcut cozum tamamlaninca tekrar deneyin.' });
+      return;
+    }
+
+    if (req.body?.async === '1') {
+      activeSolverRuns += 1;
+      solveJobs.set(runId, { status: 'running', createdAt: Date.now() });
+      res.status(202).json({ ok: true, jobId: runId, status: 'running' });
+      console.log(`[solver:${runId}] started ip=${clientIp(req)}`);
+
+      solveUploadedRequest(req, runId)
+        .then((result) => {
+          solveJobs.set(runId, { status: 'completed', result, createdAt: Date.now() });
+          console.log(`[solver:${runId}] completed elapsedMs=${result.runtime?.elapsedMs || 0}`);
+        })
+        .catch((error) => {
+          console.error(error);
+          solveJobs.set(runId, {
+            status: 'failed',
+            error: error.message || 'Solver calistirilirken hata olustu.',
+            createdAt: Date.now()
+          });
+        })
+        .finally(() => {
+          activeSolverRuns = Math.max(0, activeSolverRuns - 1);
+        });
+      return;
+    }
+
+    activeSolverRuns += 1;
+    try {
+      res.json(await solveUploadedRequest(req, runId));
+    } finally {
+      activeSolverRuns = Math.max(0, activeSolverRuns - 1);
+    }
+  } catch (error) {
+    if (!error.statusCode || error.statusCode >= 500) console.error(error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Solver calistirilirken hata olustu.' });
+  }
   }
 );
+
+setInterval(() => {
+  const cutoff = Date.now() - JOB_RETENTION_MS;
+  for (const [jobId, job] of solveJobs) {
+    if (job.status !== 'running' && job.createdAt < cutoff) solveJobs.delete(jobId);
+  }
+  for (const [ip, attempts] of solveAttempts) {
+    const recent = attempts.filter((timestamp) => Date.now() - timestamp < SOLVE_RATE_WINDOW_MS);
+    if (recent.length > 0) solveAttempts.set(ip, recent);
+    else solveAttempts.delete(ip);
+  }
+}, 10 * 60 * 1000).unref();
 
 if (existsSync(distDir)) {
   app.use(express.static(distDir));

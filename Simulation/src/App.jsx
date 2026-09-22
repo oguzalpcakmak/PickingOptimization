@@ -56,6 +56,7 @@ import {
   getStairToElevatorDistance
 } from './utils/layoutConstants';
 import PickVisualizer from './components/PickVisualizer';
+import TurnstileGate from './components/TurnstileGate';
 import testData from './data/testData.json';
 import { t } from './locales/translations';
 
@@ -64,6 +65,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 const CLIENT_LKH_ENABLED = import.meta.env.VITE_ENABLE_CLIENT_LKH !== 'false';
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAAFAJD7ITBD1uL5Nk';
 
 async function readTabularFile(uploadedFile, preferredSheets = []) {
   const lowerFileName = uploadedFile.name?.toLowerCase() || '';
@@ -149,7 +151,7 @@ function App() {
   const [alternativeStats, setAlternativeStats] = useState(null);
   const [solverRunning, setSolverRunning] = useState(false);
   const [solverMode, setSolverMode] = useState('server-quality');
-  const [solverTimeLimit, setSolverTimeLimit] = useState(120);
+  const [solverTimeLimit, setSolverTimeLimit] = useState(1200);
   const [solverSummary, setSolverSummary] = useState(null);
   const [solverInputStats, setSolverInputStats] = useState(null);
   const [solverRuntime, setSolverRuntime] = useState(null);
@@ -157,6 +159,8 @@ function App() {
   const [actualResultSnapshot, setActualResultSnapshot] = useState(null);
   const [solverResultSnapshot, setSolverResultSnapshot] = useState(null);
   const [resultViewMode, setResultViewMode] = useState('actual');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
   const [messageApi, contextHolder] = message.useMessage();
 
   // Theme configuration
@@ -699,6 +703,10 @@ function App() {
     }
 
     const mode = SOLVER_MODES[solverMode] || SOLVER_MODES['server-quality'];
+    if (mode.execution === 'server' && !turnstileToken) {
+      messageApi.warning('Guvenlik dogrulamasi henuz hazir degil. Birkaç saniye sonra tekrar deneyin.');
+      return;
+    }
     setSolverRunning(true);
     setProcessing(true);
     setSolverSummary(null);
@@ -720,8 +728,9 @@ function App() {
           profile: mode.profile,
           articleSelection: mode.articleSelection,
           candidateGroupWidth: mode.candidateGroupWidth,
-          timeLimit: solverTimeLimit || 120,
-          clientMode: mode.clientMode
+          timeLimit: solverTimeLimit || 1200,
+          clientMode: mode.clientMode,
+          turnstileToken
         };
         const payload =
           mode.execution === 'client'
@@ -776,11 +785,14 @@ function App() {
         messageApi.error(`${t(lang, 'solverError')}: ${error.message}`);
         console.error(error);
       } finally {
+        if (mode.execution === 'server') {
+          setTurnstileResetSignal((value) => value + 1);
+        }
         setSolverRunning(false);
         setProcessing(false);
       }
     })();
-  }, [accountFiles, actualResultSnapshot, applyResultSnapshot, file, isTestData, lang, messageApi, solverMode, solverTimeLimit]);
+  }, [accountFiles, actualResultSnapshot, applyResultSnapshot, file, isTestData, lang, messageApi, solverMode, solverTimeLimit, turnstileToken]);
 
   const downloadExcel = useCallback(() => {
     if (!processedData) return;
@@ -1282,14 +1294,21 @@ function App() {
                   />
                   <InputNumber
                     min={1}
-                    max={600}
+                    max={1200}
                     value={solverTimeLimit}
-                    onChange={(value) => setSolverTimeLimit(value || 120)}
+                    onChange={(value) => setSolverTimeLimit(value || 1200)}
                     disabled={solverRunning || processing}
                     addonBefore={t(lang, 'solverTimeLimit')}
                     addonAfter={t(lang, 'secondsShort')}
                     style={{ width: 170 }}
                   />
+                  {solverMode === 'server-quality' && (
+                    <TurnstileGate
+                      siteKey={TURNSTILE_SITE_KEY}
+                      onToken={setTurnstileToken}
+                      resetSignal={turnstileResetSignal}
+                    />
+                  )}
                   <Button
                     type="primary"
                     icon={<NodeIndexOutlined />}

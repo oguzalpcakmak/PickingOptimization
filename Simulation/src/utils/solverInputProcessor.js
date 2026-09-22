@@ -467,6 +467,6 @@ export function resolveSolverOptions(body = {}) {
     profile,
     articleSelection,
     candidateGroupWidth: Math.round(clampNumber(body.candidateGroupWidth, 1, 20, 2)),
-    timeLimit: clampNumber(body.timeLimit, 1, 600, 120)
+    timeLimit: clampNumber(body.timeLimit, 1, 1200, 1200)
   };
 }
