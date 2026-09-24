@@ -150,7 +150,7 @@ function App() {
   const [alternativeLocations, setAlternativeLocations] = useState([]);
   const [alternativeStats, setAlternativeStats] = useState(null);
   const [solverRunning, setSolverRunning] = useState(false);
-  const [solverMode, setSolverMode] = useState('server-quality');
+  const [solverMode, setSolverMode] = useState('client-lkh');
   const [solverTimeLimit, setSolverTimeLimit] = useState(1200);
   const [solverSummary, setSolverSummary] = useState(null);
   const [solverInputStats, setSolverInputStats] = useState(null);
